@@ -1721,7 +1721,6 @@ MODULE hsl_mc70_double
         IF (a_n1+a_n2.EQ. a_n) THEN
              RETURN
         END IF
-             write(11,*)  a_weight_1,a_weight_2,a_weight_sep
 
         IF (a_n1 .NE. 0 .AND. a_n2 .NE. 0 .AND. a_n .GT. 3 ) THEN
            IF (.not. use_multilevel) THEN
@@ -1802,7 +1801,6 @@ MODULE hsl_mc70_double
            END IF
             part_ptr = work_ptr+8*a_n+sumweight+a_ne/2+1
             work(part_ptr+1:part_ptr+a_n) = work(partition_ptr+1:partition_ptr+a_n)
-             write(11,*)  a_weight_1,a_weight_2,a_weight_sep, tau_best
            DO i=1,k
           !  CALL expand_partition_simple(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
           !     a_n1_new,a_n2_new,a_weight_1_new,a_weight_2_new,&
@@ -1817,7 +1815,6 @@ MODULE hsl_mc70_double
                a_weight_sep_new,work(part_ptr+1:part_ptr+a_n),&
                work(work_ptr+1:work_ptr+5*a_n),control)
 
-             write(11,*)  a_weight_1_new,a_weight_2_new,a_weight_sep_new
             IF (ref_method .EQ. 1) THEN
              IF (control%block) THEN
               CALL mc70_refine_block_trim(a_n,a_ne,a_ptr,a_row,a_weight,&
@@ -1853,7 +1850,6 @@ MODULE hsl_mc70_double
 
             CALL cost_function(a_weight_1_new,a_weight_2_new,a_weight_sep_new,&
               sumweight,ratio,imbal,tau)
-             write(11,*)  a_weight_1_new,a_weight_2_new,a_weight_sep_new,tau
             IF (tau .LT. tau_best) THEN
                tau_best = tau
                work(partition_ptr+1:partition_ptr+a_n) = &
@@ -2100,7 +2096,6 @@ MODULE hsl_mc70_double
         END SELECT
        END IF
        max_search = 1
-       write(11,*) 'jj',nstrt,nend
         
        IF (nend .LT. 1 .OR. nend.GT. a_n) THEN
         CALL mc70_find_pseudo(a_n,a_ne,a_ptr,a_row,&
@@ -2117,7 +2112,6 @@ MODULE hsl_mc70_double
        ! write(*,*) work(level_ptr_p+1:level_ptr_p+num_levels_nend)
        END IF
 
-       write(11,*) 'jj',nstrt,nend
         IF (num_entries .lt. a_n) THEN
            ! matrix is separable
            a_n1 = num_entries
@@ -2406,7 +2400,7 @@ MODULE hsl_mc70_double
 
         CALL mc70_find_pseudo(a_n,a_ne,a_ptr,a_row,&
            work(level_ptr_p+1:level_ptr_p+a_n),work(level_p+1:level_p+a_n),&
-           max_search,nstrt,nend,work(work_p+1:work_p+2*a_n),num_levels_nend,&
+           nstrt,nend,max_search,work(work_p+1:work_p+2*a_n),num_levels_nend,&
            num_entries,lwidth)
 
         IF (num_entries .lt. a_n) THEN
@@ -2473,13 +2467,11 @@ MODULE hsl_mc70_double
            DO j = work(level_ptr_p+i),work(level_ptr_p+i+1)-1
              work(work_p+i) = work(work_p+i) + a_weight(work(level_p+j))
            END DO
-         !  write(*,*) i,work(work_p+i)
          END DO
          i = num_levels_nend
          DO j = work(level_ptr_p+i),a_n
              work(work_p+i) = work(work_p+i) + a_weight(work(level_p+j))
          END DO
-         !  write(*,*) i,work(work_p+i)
 
 
          ! First possible separator contains all of the nodes in level 2
@@ -2583,7 +2575,6 @@ MODULE hsl_mc70_double
         INTEGER :: minwid ! Minimum levelset width
         INTEGER :: nlvl ! number of levels in level structure
         INTEGER :: minwid1
-        write(11,*) 'nn',nstrt
         j = 0
         mask = 0
         list = mask+a_n
@@ -2597,8 +2588,6 @@ MODULE hsl_mc70_double
 ! Generate level structure for node with min supervariable degree
         CALL mc70_level_struct(nstrt,a_n,a_ne,a_ptr,a_row,a_n, &
           work(mask+1:mask+a_n),level_ptr,level,maxdep,lwidth,num_entries)
-          write(11,*) 'hh',maxdep,a_n+1-level_ptr(maxdep)
-
         IF (num_entries .lt. a_n) THEN
           ! matrix is separable
           RETURN
@@ -2620,7 +2609,7 @@ MODULE hsl_mc70_double
             END IF
           END DO
 
-         ! Choose at most 5 nodes
+         ! Choose at most max_search nodes
           DO nlsize = 1,max_search
             ! Look for candiate with least degree
             mindeg = a_n+1
@@ -2666,20 +2655,17 @@ MODULE hsl_mc70_double
               lwidth1 = lwidth1 + k*(level_ptr(i+1)-level_ptr(i))
             END DO 
             lwidth1 = lwidth1 + nlvl*(a_ne-level_ptr(nlvl))
-            write(11,*) 'node',node,nlvl,lwidth1,nlsize
 
               IF (nlvl .GT. maxdep) THEN
                 ! Level structure of greater depth. Begin a new iteration.
                  nstrt = node
                  maxdep = nlvl
-                 write(11,*) 'nstrt',nstrt,nlvl 
    
                  GOTO 70
               ELSE
                  IF (lwidth1 .LT.minwid1) THEN
                   
                   nstop = node
-                 write(11,*) 'nstop',nstop,nlvl,lwidth1 
                   minwid = lwidth
                   minwid1 = lwidth1
                  END IF
@@ -3280,10 +3266,6 @@ MODULE hsl_mc70_double
         ELSE
          band = a_n
         END IF
-        !   write(*,*) 'pre-fm',a_n1,a_n2,a_n-a_n1-a_n2,a_weight_1,&
-        !        a_weight_2,a_weight_sep, &
-        !        (real(a_weight_sep)/real(a_weight_1))/real(a_weight_2),&
-        !        real(a_weight_sep)*(1.0+0.3*abs(real(a_weight_1-a_weight_2))/real(sumweight))
         IF (.true.) THEN
          CALL mc70_fm_refinement_band_balance(a_n,a_ne,a_ptr,a_row,a_weight,&
           sumweight,&
@@ -5579,8 +5561,6 @@ INNER:    DO inn = 1, n
             work(rows_sub+i) = a_weight(partition(j))
        END DO
        work(hamd_perm+1:hamd_perm+a_n1) = work(a_ptr_sub+1:a_ptr_sub+a_n1)
-      ! write(*,*) 'gfdg',a_n1,a_n2,a_n-a_n1-a_n2
-      ! write(*,*) work(hamd_perm+1:hamd_perm+a_n1)
 
        ! Build second submatrix
        !IF (a_n2 .NE. 1) THEN
@@ -5590,16 +5570,6 @@ INNER:    DO inn = 1, n
         work(rows_sub+a_n1+1:rows_sub+a_n1+a_n_2),&
         a_ne_sub,work(a_ptr_sub+1:a_ptr_sub+a_n_2),len_a_row_sub,&
         work(a_irn_sub+1:a_irn_sub+a_ne),work(extract_work+1:extract_work+a_n))
-      ! write(*,*) 'a_n1,a_n_2',a_n1,a_n_2
-      ! write(*,*) partition(1:a_n)
-      ! write(*,*) 'jj',a_n1,a_n2,a_n_2,a_ne,a_ne_sub,a_n_sep
-      ! write(*,*) a_ptr,a_ne+1
-      ! write(*,*) 'fdss'
-      ! write(*,*) a_row
-      ! write(*,*) 'fds'
-      ! write(*,*) work(a_ptr_sub+1:a_ptr_sub+a_n_2),a_ne_sub+1
-      ! write(*,*) 'hh'
-      ! write(*,*) work(a_irn_sub+1:a_irn_sub+a_ne_sub)
        ! Apply hamd
        work(rows_sub+a_n1+1:rows_sub+a_n1+a_n2) = mc70_part1_flag
        work(rows_sub+a_n1+a_n2+1:rows_sub+a_n1+a_n_2) = mc70_sep_flag
@@ -5612,8 +5582,6 @@ INNER:    DO inn = 1, n
       ! ELSE
       !   work(hamd_perm+a_n1+1) = 1
       ! END IF
-      ! write(*,*) 'fdsdf'
-      ! write(*,*) work(hamd_perm+a_n1+1:hamd_perm+a_n)
        DO i = 1,a_n_2
           j = work(hamd_perm+a_n1+i)
             work(a_ptr_sub+i+a_n1) = iperm(partition(a_n1+j))
@@ -5622,8 +5590,6 @@ INNER:    DO inn = 1, n
        iperm(a_n1+1:a_n) = work(a_ptr_sub+1+a_n1:a_ptr_sub+a_n)
        iperm(1:a_n1) = work(hamd_perm+1:hamd_perm+a_n1)
        a_weight(1:a_n) = work(rows_sub+1:rows_sub+a_n)
-      ! write(*,*) 'ii'
-      ! write(*,*) iperm(1:a_n1)
 
      END SUBROUTINE hamd_both_old
 
@@ -5702,8 +5668,6 @@ INNER:    DO inn = 1, n
             work(rows_sub+i) = a_weight(partition(j))
        END DO
        work(hamd_perm+1:hamd_perm+a_n1) = work(a_ptr_sub+1:a_ptr_sub+a_n1)
-      ! write(*,*) 'gfdg',a_n1,a_n2,a_n-a_n1-a_n2
-      ! write(*,*) work(hamd_perm+1:hamd_perm+a_n1)
 
        ! Build second submatrix
        !IF (a_n2 .NE. 1) THEN
@@ -5713,16 +5677,6 @@ INNER:    DO inn = 1, n
         work(rows_sub+a_n1+1:rows_sub+a_n1+a_n_2),&
         a_ne_sub,work(a_ptr_sub+1:a_ptr_sub+a_n_2),len_a_row_sub,&
         work(a_irn_sub+1:a_irn_sub+a_ne),work(extract_work+1:extract_work+a_n))
-      ! write(*,*) 'a_n1,a_n_2',a_n1,a_n_2
-      ! write(*,*) partition(1:a_n)
-      ! write(*,*) 'jj',a_n1,a_n2,a_n_2,a_ne,a_ne_sub,a_n_sep
-      ! write(*,*) a_ptr,a_ne+1
-      ! write(*,*) 'fdss'
-      ! write(*,*) a_row
-      ! write(*,*) 'fds'
-      ! write(*,*) work(a_ptr_sub+1:a_ptr_sub+a_n_2),a_ne_sub+1
-      ! write(*,*) 'hh'
-      ! write(*,*) work(a_irn_sub+1:a_irn_sub+a_ne_sub)
        ! Apply hamd
        work(rows_sub+a_n1+1:rows_sub+a_n1+a_n2) = mc70_part1_flag
        call hamd(a_n_2,a_ne_sub,a_lirn_sub,&
@@ -5734,8 +5688,6 @@ INNER:    DO inn = 1, n
       ! ELSE
       !   work(hamd_perm+a_n1+1) = 1
       ! END IF
-      ! write(*,*) 'fdsdf'
-      ! write(*,*) work(hamd_perm+a_n1+1:hamd_perm+a_n)
        DO i = 1,a_n_2
           j = work(hamd_perm+a_n1+i)
             work(a_ptr_sub+i+a_n1) = iperm(partition(a_n1+j))
@@ -5750,8 +5702,6 @@ INNER:    DO inn = 1, n
        iperm(a_n1+1:a_n) = work(a_ptr_sub+1+a_n1:a_ptr_sub+a_n)
        iperm(1:a_n1) = work(hamd_perm+1:hamd_perm+a_n1)
        a_weight(1:a_n) = work(rows_sub+1:rows_sub+a_n)
-      ! write(*,*) 'ii'
-      ! write(*,*) iperm(1:a_n1)
 
      END SUBROUTINE hamd_both_old1
 
@@ -5796,7 +5746,6 @@ INNER:    DO inn = 1, n
          work(mask+j) = -i
        END DO
        a_row_sub(:)=0
-      ! write(*,*) 'mask',work(mask+1:mask+a_n)
  
        ! Count number of entries in  submatrix and set-up column ptrs
        a_ptr_sub(1:a_n_sub) = 0
@@ -6366,6 +6315,7 @@ INNER:    DO inn = 1, n
          ! CALL coarse_separator(grid%graph%n,grid%graph,grid%row_wgt, &
          !   grid%where,grid%part_div,control,info)
           a_ne = grid%graph%ptr(grid%graph%n+1)-1
+
           CALL mc70_coarse_partition(grid%graph%n,a_ne,grid%graph%ptr,&
             grid%graph%col,grid%row_wgt,sumweight,&
             grid%part_div(1),grid%part_div(2),grid%where,lwork,work,control,info)
@@ -8458,7 +8408,6 @@ INNER:    DO inn = 1, n
               END IF
            END DO
         END DO
-     !   write(11,*) 's',s 
         
         ! Update a_n1, a_n2, a_weight1, a_weight_2,a_weight_sep
         a_n1 = 0
@@ -8592,7 +8541,6 @@ INNER:    DO inn = 1, n
               END IF
            END DO
         END DO
-        write(11,*) 's',s
         work(work_nextb+1:work_nextb+a_n) = 0
         work(work_dist+1:work_dist+a_n) = -1
         work(work_mask+1:work_mask+a_n) = 0
