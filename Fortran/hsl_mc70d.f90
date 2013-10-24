@@ -4,6 +4,7 @@ MODULE hsl_mc70_double
   USE hsl_zd11_double
   USE hsl_mc65_double
   USE hsl_fa14_double
+  USE hsl_maxflow
 
       IMPLICIT NONE
       PRIVATE
@@ -151,6 +152,7 @@ MODULE hsl_mc70_double
 ! the location of each node in the buckets
         TYPE (list_node_type), POINTER, DIMENSION (:) :: mynode
       END TYPE queue_type
+! *****************************************************************
 
 ! ---------------------------------------------------
 ! Interfaces
@@ -8746,5 +8748,6 @@ INNER:    DO inn = 1, n
       !  END IF
 
       END SUBROUTINE cost_function
+
 
 END MODULE hsl_mc70_double
