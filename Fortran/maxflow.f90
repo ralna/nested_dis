@@ -14,8 +14,10 @@ type bandgraph
   integer, allocatable :: isAdjToSink(:)
 !       isAdjToSink(u,1)  = 1 --> u is adjacent to the sink
 !       isAdjToSink(u,1) /= 1 --> u is NOT adjacent to the sink
-  integer, allocatable ::  vwts(:) ! vertex weights (optional),
-!       if not present, then unit vertex weights assumed
+  integer, allocatable ::  vwts(:) ! vertex weights of non-source and
+                                   !                   non-sink vertices
+  integer ::  vwtB  ! Sum of weights of vertices in B  (source)
+  integer ::  vwtW  ! Sum of weights of vertices in W  (sink)
 end type bandgraph
 
 type network
@@ -139,16 +141,27 @@ a_ns = a_n - a_n1 - a_n2
 n_s  = a_ns
 
 ! Set up map array to define in what partition each vertex lies
-allocate (map(a_n))
+! At same time set weights for bandgraph
+allocate (map(a_n),bandg%vwts(n_s))
+bandg%vwtB = 0
 do i = 1,a_n1
-  map(partition(i)) = 1
+  k = partition(i)
+  map(k) = 1
+  bandg%vwtB = bandg%vwtB + a_weight(k)
 enddo
+bandg%vwtW = 0
 do i = a_n1+1,a_n1+a_n2
-  map(partition(i)) = 2
+  k = partition(i)
+  map(k) = 2
+  bandg%vwtW = bandg%vwtW + a_weight(k)
 enddo
 do i = a_n1+a_n2+1,a_n
-  map(partition(i)) = 0
+  k = partition(i)
+  map(k) = 0
+  bandg%vwts(i-a_n1-a_n2) = a_weight(k)
 enddo
+
+!write(8,*) map(1:a_n)
 
 ! Source is associated with partition B (size a_n1)
 ! Sink is associated with partition W   (size a_n2)
@@ -164,7 +177,17 @@ do k = 1,bandg%nvtx
 enddo
 
 ! Allocate maximum space for bandgraph edges
-n_S_S = min(a_ns*a_ns,a_ne)
+!n_S_S = min(a_ns*a_ns,a_ne)  ! HST: a_ns*a_ns can cause integer overflow
+n_S_S=0
+do k= 1,bandg%nvtx
+  i = partition(a_n1+a_n2+k)
+  j1 = a_ptr(i)
+  if (i == a_n) then 
+    n_S_S = n_S_S + a_ne +1 - a_ptr(i) 
+  else 
+    n_S_S = n_S_S + a_ptr(i+1)- a_ptr(i)
+  endif
+end do
 allocate(graph_S_S(n_S_S,2))
 
 ! Allocate arrays for bandgraph
@@ -205,7 +228,6 @@ do k = 1,bandg%nvtx
   enddo
 enddo
 deallocate(sep_map)
-
 bandg%nedge = nedge
 allocate(bandg%edges(nedge,2))
 bandg%edges(:,1) = graph_S_S(1:nedge,1)
@@ -387,6 +409,8 @@ do i =1,a_n
     cycle
   endif
 enddo
+
+!write(8,*) map(1:a_n)
 
 deallocate(map)
 

@@ -12,6 +12,7 @@ type(network), intent(out) :: netw
 integer, optional :: weights
 
 integer i,iarc,ii,jj,lp,narc1,narc2,narc3,narc4,narc,nnode,nvtx,nedge,u,v
+integer sumweight
 
 integer, allocatable :: data(:,:)
 integer, allocatable :: sort(:),index(:)
@@ -21,6 +22,8 @@ EXTERNAL KB07AI
 lp = 6
 
 if (msglvl .gt.0) write(lp,'(/A)') '### inside mknetwork()'
+
+sumweight = sum(bandg%vwts)
 
 nvtx = bandg%nvtx
 nedge = bandg%nedge
@@ -35,26 +38,29 @@ nedge = bandg%nedge
 !   vwts = 1 ;
 !endif
 
-allocate (sort(nedge),index(nedge))
-do i=1,nedge
-  sort(i) = bandg%edges(i,1)*nvtx + bandg%edges(i,2)
-enddo
-CALL KB07AI(sort,nedge,index)
+! HST: If nedge=0, KB07 prints out messaged for this case so need to suppress
+! the sort
+if (nedge.ne. 0) then
+  allocate (sort(nedge),index(nedge))
+  do i=1,nedge
+    sort(i) = bandg%edges(i,1)*nvtx + bandg%edges(i,2)
+  enddo
+  CALL KB07AI(sort,nedge,index)
 
-deallocate(sort)
+  deallocate(sort)
 
-allocate (data(nedge,2))
+  allocate (data(nedge,2))
 
 !
 ! sort and compress edges
 !
 ! Initialize data to edges
-do i = 1,nedge
-  data(i,1) = bandg%edges(index(i),1)
-  data(i,2) = bandg%edges(index(i),2)
-enddo
+  do i = 1,nedge
+    data(i,1) = bandg%edges(index(i),1)
+    data(i,2) = bandg%edges(index(i),2)
+  enddo
 
-deallocate(index)
+  deallocate(index)
 
 ! data = bandg%edges
 
@@ -69,17 +75,20 @@ deallocate(index)
 ! CALL KB05AI(data(1,1),nedge)
 
 ! Remove duplicates
-ii = 1
-jj = 1
-do ii = 2,nedge
-  if (data(ii,1) .NE. data(ii-1,1) .OR. data(ii,2) .NE. data(ii-1,2)) then
-    jj = jj + 1
-    data(jj,1) = data(ii,1)
-    data(jj,2) = data(ii,2)
-  endif
-enddo
+  ii = 1
+  jj = 1
+  do ii = 2,nedge
+    if (data(ii,1) .NE. data(ii-1,1) .OR. data(ii,2) .NE. data(ii-1,2)) then
+      jj = jj + 1
+      data(jj,1) = data(ii,1)
+      data(jj,2) = data(ii,2)
+    endif
+  enddo
 
-nedge  = jj
+  nedge  = jj
+else
+  allocate (data(nedge,2))  
+end if
 
 if (msglvl .gt.0) write(lp,'(A,I8,A,I8)') 'nvtx', nvtx, ', nedge', nedge
 !   write(lp,'(A)')    %d vertices adjacent to source', ... ...
@@ -121,7 +130,6 @@ do i = 1,nvtx
 enddo
 
 narc4 = 0
-
 do ii = 1,nedge
   u = data(ii,1)  
   v = data(ii,2)
@@ -172,16 +180,17 @@ allocate(netw%flows(narc))
 netw%firsts = -1
 netw%seconds = -1
 !if isfield(bandgraph, 'vwts')
+!ISD I just suppressed all this as it doesn't make sense now
 !ISD Interesting that bang%vwts and ones(narc,1) are different lengths
 !ISD Also you set all capacities in following loops so no need to
 ! initialize here
 !ISD I confess to being a little confused about your setting of capacities
-if (present(weights)) then
-  netw%capacities = bandg%vwts
-else
+!if (present(weights)) then
+!  netw%capacities = bandg%vwts
+!else
 !  capacities = ones(narc,1)
-  netw%capacities = 1
-endif
+!  netw%capacities = 1
+!endif
 
 !
 ! (u-,u+) arcs first
@@ -191,7 +200,7 @@ do u = 1,nvtx
   iarc = iarc + 1
   netw%firsts(iarc) = 2*u
   netw%seconds(iarc) = 2*u + 1
-  netw%capacities(iarc) = 1
+  netw%capacities(iarc) = bandg%vwts(u)
 enddo
 
 if (msglvl .gt.0) write(lp,'(A,I8)') 'after (u-,u+) arcs, iarc = ', iarc
@@ -204,7 +213,9 @@ do u = 1,nvtx
     iarc = iarc + 1
     netw%firsts(iarc) = netw%source
     netw%seconds(iarc) = 2*u
-    netw%capacities(iarc) = nvtx
+  !  netw%capacities(iarc) = nvtx*nvtx HST: can overflow - max flow in network
+  !                      can be bounded from above by sumweight
+    netw%capacities(iarc) = sumweight
   endif
 enddo
 
@@ -220,7 +231,9 @@ do u = 1,nvtx
     iarc = iarc + 1
     netw%firsts(iarc) = 2*u + 1
     netw%seconds(iarc) = netw%sink
-    netw%capacities(iarc) = nvtx
+  !  netw%capacities(iarc) = nvtx*nvtx HST: can overflow - max flow in network
+  !                      can be bounded from above by sumweight
+    netw%capacities(iarc) = sumweight
   endif
 enddo
 
@@ -232,13 +245,19 @@ if (msglvl .gt.0) write(lp,'(A,I8)') 'after (u,sink) arcs, iarc = ',iarc
 do ii = 1,nedge
   u = data(ii,1)
   v = data(ii,2)
+  ! HST: BUG - logic incorrect - added last 2 lines of logic to correspond to 
+  !  logic for computing narc4 
   if ((u /= v) .and.  &
      (bandg%isAdjToSource(u) /= 1 .OR. bandg%isAdjToSource(v) /= 1) .and.  &
-     (bandg%isAdjToSink(u)   /= 1 .OR. bandg%isAdjToSink(v)   /= 1)) then
+     (bandg%isAdjToSink(u)   /= 1 .OR. bandg%isAdjToSink(v)   /= 1) .and.  &
+     (bandg%isAdjToSource(u) /= 1 .OR. bandg%isAdjToSink(u) /= 1) .and.  &
+     (bandg%isAdjToSource(v) /= 1 .OR. bandg%isAdjToSink(v) /= 1)  ) then
     iarc = iarc + 1
     netw%firsts(iarc) = 2*u + 1
     netw%seconds(iarc) = 2*v
-    netw%capacities(iarc) = nvtx
+  !  netw%capacities(iarc) = nvtx*nvtx HST: can overflow - max flow in network
+  !                      can be bounded from above by sumweight
+    netw%capacities(iarc) = sumweight
   endif
 enddo
 
