@@ -10677,9 +10677,9 @@ implicit none
 integer, intent(in) :: a_n ! order of matrix
 integer, intent(in) :: a_ne ! number of entries in matrix (lower and
              ! upper triangle)
-integer, allocatable, intent(in) :: a_ptr(:) ! On input, a_ptr(i) contains 
+integer, intent(in) :: a_ptr(:) ! On input, a_ptr(i) contains 
              ! position in a_row that entries for column i start. 
-integer, allocatable, intent(in) :: a_row(:) ! On input, a_row contains row 
+integer, intent(in) :: a_row(:) ! On input, a_row contains row 
              ! indices of the nonzero entries. Diagonal entries have been 
              ! removed and the matrix expanded.
 ! At the moment weights are not used at all             

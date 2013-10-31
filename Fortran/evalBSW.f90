@@ -30,7 +30,7 @@ subroutine evalBSW (a_n, a_ptr, a_row, map, alpha, beta, stats, stats10)
 !
 implicit none
 integer, intent(in) :: a_n
-integer, allocatable, intent(in) :: map(:),a_ptr(:),a_row(:)
+integer, intent(in) :: map(:),a_ptr(:),a_row(:)
 real(wp), intent(in) :: alpha, beta
 integer, intent(out) :: stats(9)
 real(wp), intent(out) :: stats10
@@ -66,7 +66,11 @@ nWW = 0
 !nzA = length(rows) ;
 do j = 1,a_n
   j1 = a_ptr(j)
-  j2 = a_ptr(j+1)-1
+  if (j.eq.a_n) then
+   j2 = size(a_row)
+  else
+   j2 = a_ptr(j+1)-1
+  end if
   v = j
   do jj = j1,j2
     u = a_row(jj) ; 

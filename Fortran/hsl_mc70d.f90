@@ -1740,13 +1740,29 @@ MODULE hsl_mc70_double
                  ref_method = 1
               END IF
            ELSE
-              IF (control%refinement .LT. 1) THEN
+              IF (control%refinement .LT. 0) THEN
+                 ref_method = 0
+              ELSE 
+               IF (control%refinement .EQ. 0) THEN
                  ref_method = 1
-              ELSE
+               ELSE
                  ref_method = 2
+               END IF
               END IF
            END IF
             
+           IF (ref_method .EQ. 0) THEN
+              CALL mc70_refine_max_flow(a_n,a_ne,a_ptr,a_row,a_weight,&
+               sumweight,a_n1,a_n2,&
+               a_weight_1,a_weight_2,a_weight_sep,&
+               work(partition_ptr+1:partition_ptr+a_n),&
+               work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control) 
+         
+             CALL mc70_refine(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,a_n2,&
+               a_weight_1,a_weight_2,a_weight_sep,&
+               work(partition_ptr+1:partition_ptr+a_n),&
+               work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control,ref_method) 
+           ELSE 
             IF (ref_method .EQ. 1) THEN
              IF (control%block) THEN
               CALL mc70_refine_block_trim(a_n,a_ne,a_ptr,a_row,a_weight,&
@@ -1775,6 +1791,7 @@ MODULE hsl_mc70_double
                work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control) 
 
             END IF
+           END IF
           ! Refine the partition
          !   write(*,*) '******************'
          !  write(*,*) 'output',a_n1,a_n2,a_n-a_n1-a_n2,a_weight_1,&
@@ -1816,6 +1833,21 @@ MODULE hsl_mc70_double
                 a_weight_1_new,a_weight_2_new,&
                a_weight_sep_new,work(part_ptr+1:part_ptr+a_n),&
                work(work_ptr+1:work_ptr+5*a_n),control)
+           
+           IF (ref_method .EQ. 0) THEN
+
+              CALL mc70_refine_max_flow(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
+               a_n1_new,a_n2_new,&
+               a_weight_1_new,a_weight_2_new,a_weight_sep_new,&
+               work(part_ptr+1:part_ptr+a_n),&
+               work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control) 
+             !IF (i.EQ.k) THEN
+             CALL mc70_refine(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1_new,a_n2_new,&
+               a_weight_1_new,a_weight_2_new,a_weight_sep_new,&
+               work(part_ptr+1:part_ptr+a_n),&
+               work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control,ref_method) 
+
+           ELSE
 
             IF (ref_method .EQ. 1) THEN
              IF (control%block) THEN
@@ -1849,6 +1881,7 @@ MODULE hsl_mc70_double
                work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control) 
 
             END IF
+           END IF
 
             CALL cost_function(a_weight_1_new,a_weight_2_new,a_weight_sep_new,&
               sumweight,ratio,imbal,tau)
@@ -4613,7 +4646,8 @@ INNER:    DO inn = 1, n
 ! .. Intrinsic Functions ..
         INTRINSIC abs, max, min, mod
 ! ..
-       
+    !   write(11,*) 'lirn', lirn, ne, n
+    !   write(11,*) sep
         me = 0
         nosep = 0
         DO i = 1, n
@@ -6485,22 +6519,50 @@ INNER:    DO inn = 1, n
               ELSE
                  ref_method = 1
               END IF
-           ELSE  
-             IF (control%refinement .LE. 0) THEN
-                 ref_method = 1
+         ELSE  
+             IF (control%refinement .LT. 0) THEN
+                 ref_method = 0
              ELSE
+              IF (control%refinement .EQ. 0) THEN
+                 ref_method = 1
+              ELSE
                  ref_method = 2
+              END IF
              END IF
-          END IF
+         END IF
+        
+         IF (ref_method .EQ. 0) THEN
+            CALL mc70_refine_max_flow(grid%graph%n,a_ne,grid%graph%ptr,&
+             grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
+             grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
+             work(partition_ptr+1:partition_ptr+grid%graph%n),&
+             work1(1:8*grid%graph%n+sumweight+a_ne/2),&
+             control) 
+            CALL mc70_refine(grid%graph%n,a_ne,grid%graph%ptr,&
+             grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
+             grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
+             work(partition_ptr+1:partition_ptr+grid%graph%n),&
+             work1(1:8*grid%graph%n+sumweight+a_ne/2),&
+             control,ref_method) 
+         ELSE
 
+          IF (ref_method .EQ. 1) THEN
+           IF (control%block) THEN
+            CALL mc70_refine_block_trim(grid%graph%n,a_ne,grid%graph%ptr,&
+             grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
+             grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
+             work(partition_ptr+1:partition_ptr+grid%graph%n),&
+             work1(1:8*grid%graph%n+sumweight+a_ne/2),&
+             control) 
 
-         IF (ref_method .EQ. 1) THEN
+           ELSE
             CALL mc70_refine_trim(grid%graph%n,a_ne,grid%graph%ptr,&
              grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
              grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
              work(partition_ptr+1:partition_ptr+grid%graph%n),&
              work1(1:8*grid%graph%n+sumweight+a_ne/2),&
              control) 
+           END IF
             CALL mc70_refine(grid%graph%n,a_ne,grid%graph%ptr,&
              grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
              grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
@@ -6521,6 +6583,7 @@ INNER:    DO inn = 1, n
              work1(1:8*grid%graph%n+sumweight+a_ne/2),&
              control) 
          END IF
+        END IF
 
          DEALLOCATE (work1,stat = st)
          IF (st/=0) THEN
@@ -6537,19 +6600,47 @@ INNER:    DO inn = 1, n
                  ref_method = 1
               END IF
            ELSE  
-             IF (control%refinement .LT. 1) THEN
+            IF (control%refinement .LT. 0) THEN
+                 ref_method = 0
+            ELSE
+             IF (control%refinement .EQ. 0) THEN
                  ref_method = 1
              ELSE
                  ref_method = 2
              END IF
+            END IF
           END IF
+         IF (ref_method .LE. 0) THEN
+            CALL mc70_refine_max_flow(grid%graph%n,a_ne,grid%graph%ptr,&
+             grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
+             grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
+             work(partition_ptr+1:partition_ptr+grid%graph%n),&
+             work(work_ptr+1:work_ptr+8*grid%graph%n+sumweight+a_ne/2),&
+             control) 
+            CALL mc70_refine(grid%graph%n,a_ne,grid%graph%ptr,&
+             grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
+             grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
+             work(partition_ptr+1:partition_ptr+grid%graph%n),&
+             work(work_ptr+1:work_ptr+8*grid%graph%n+sumweight+a_ne/2),&
+             control,ref_method) 
+        ELSE
          IF (ref_method .LE. 1) THEN
+           IF (control%block) THEN
+            CALL mc70_refine_block_trim(grid%graph%n,a_ne,grid%graph%ptr,&
+             grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
+             grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
+             work(partition_ptr+1:partition_ptr+grid%graph%n),&
+             work(work_ptr+1:work_ptr+8*grid%graph%n+sumweight+a_ne/2),&
+             control) 
+           ELSE
             CALL mc70_refine_trim(grid%graph%n,a_ne,grid%graph%ptr,&
              grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
              grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
              work(partition_ptr+1:partition_ptr+grid%graph%n),&
              work(work_ptr+1:work_ptr+8*grid%graph%n+sumweight+a_ne/2),&
              control) 
+
+           END IF
             CALL mc70_refine(grid%graph%n,a_ne,grid%graph%ptr,&
              grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
              grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
@@ -6572,6 +6663,7 @@ INNER:    DO inn = 1, n
          END IF
         END IF
        END IF
+      END IF
 
         !   write(*,*) 'a_n1r =',grid%part_div(1),';'
         !   write(*,*) 'a_n2r =',grid%part_div(2),';'
@@ -6704,18 +6796,42 @@ INNER:    DO inn = 1, n
                  ref_method = 1
               END IF
            ELSE
+             IF (control%refinement .LT. 0) THEN
+                 ref_method = 0
+             ELSE
               IF (control%refinement .LT. 1) THEN
                  ref_method = 1
               ELSE
                  ref_method = 2
               END IF
+             END IF
            END IF
-           IF (ref_method .EQ. 1) THEN
-            CALL mc70_refine_trim(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,a_n2,&
+          IF (ref_method .EQ. 0) THEN
+             CALL mc70_refine_max_flow(a_n,a_ne,a_ptr,a_row,a_weight,&
+               sumweight,a_n1,a_n2,&
                a_weight_1,a_weight_2,a_weight_sep,&
                work(partition_ptr+1:partition_ptr+a_n),&
                work1(1:8*a_n+sumweight+a_ne/2),control) 
-             CALL mc70_refine(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,a_n2,&
+            CALL mc70_refine(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,a_n2,&
+               a_weight_1,a_weight_2,a_weight_sep,&
+               work(partition_ptr+1:partition_ptr+a_n),&
+               work1(1:8*a_n+sumweight+a_ne/2),control,ref_method) 
+          ELSE
+           IF (ref_method .EQ. 1) THEN
+            IF (control%block) THEN
+             CALL mc70_refine_block_trim(a_n,a_ne,a_ptr,a_row,a_weight,&
+               sumweight,a_n1,a_n2,&
+               a_weight_1,a_weight_2,a_weight_sep,&
+               work(partition_ptr+1:partition_ptr+a_n),&
+               work1(1:8*a_n+sumweight+a_ne/2),control) 
+            ELSE
+
+             CALL mc70_refine_trim(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,a_n2,&
+               a_weight_1,a_weight_2,a_weight_sep,&
+               work(partition_ptr+1:partition_ptr+a_n),&
+               work1(1:8*a_n+sumweight+a_ne/2),control) 
+            END IF
+            CALL mc70_refine(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,a_n2,&
                a_weight_1,a_weight_2,a_weight_sep,&
                work(partition_ptr+1:partition_ptr+a_n),&
                work1(1:8*a_n+sumweight+a_ne/2),control,ref_method) 
@@ -6730,7 +6846,7 @@ INNER:    DO inn = 1, n
                work(partition_ptr+1:partition_ptr+a_n),&
                work1(1:8*a_n+sumweight+a_ne/2),control) 
            END IF
-
+          END IF
 
            END IF  
          ELSE
@@ -6786,17 +6902,41 @@ INNER:    DO inn = 1, n
                  ref_method = 1
               END IF
            ELSE
+             IF (control%refinement .LT. 0) THEN
+                 ref_method = 0
+             ELSE
               IF (control%refinement .LT. 1) THEN
                  ref_method = 1
               ELSE
                  ref_method = 2
               END IF
+             END IF
            END IF
-           IF (ref_method .EQ. 1) THEN
-            CALL mc70_refine_trim(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,a_n2,&
+           IF (ref_method .EQ. 0) THEN
+             CALL mc70_refine_max_flow(a_n,a_ne,a_ptr,a_row,a_weight,&
+               sumweight,a_n1,a_n2,&
                a_weight_1,a_weight_2,a_weight_sep,&
                work(partition_ptr+1:partition_ptr+a_n),&
                work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control) 
+             CALL mc70_refine(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,a_n2,&
+               a_weight_1,a_weight_2,a_weight_sep,&
+               work(partition_ptr+1:partition_ptr+a_n),&
+               work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control,ref_method) 
+           ELSE
+           IF (ref_method .EQ. 1) THEN
+            IF (control%block) THEN
+             CALL mc70_refine_block_trim(a_n,a_ne,a_ptr,a_row,a_weight,&
+               sumweight,a_n1,a_n2,&
+               a_weight_1,a_weight_2,a_weight_sep,&
+               work(partition_ptr+1:partition_ptr+a_n),&
+               work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control) 
+            ELSE
+
+             CALL mc70_refine_trim(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
+               a_n1,a_n2,a_weight_1,a_weight_2,a_weight_sep,&
+               work(partition_ptr+1:partition_ptr+a_n),&
+               work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control) 
+            END IF
              CALL mc70_refine(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,a_n2,&
                a_weight_1,a_weight_2,a_weight_sep,&
                work(partition_ptr+1:partition_ptr+a_n),&
@@ -6812,7 +6952,7 @@ INNER:    DO inn = 1, n
                work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control) 
 
            END IF
-
+          END IF
 
            END IF  
          ELSE
@@ -8246,9 +8386,131 @@ INNER:    DO inn = 1, n
         END SELECT
       END DO
       a_weight_sep = sumweight - a_weight_1 - a_weight_2
-     ! call check_partition1(a_n,a_ne,a_ptr,a_row,a_n1,a_n2,work(work_part+1:work_part+a_n),a_weight_1,a_weight_2,a_weight)
+      call check_partition1(a_n,a_ne,a_ptr,a_row,a_n1,a_n2,partition)
 
       END SUBROUTINE mc70_refine_block_trim
+
+! ---------------------------------------------------
+! mc70_refine_block_trim
+! ---------------------------------------------------
+! Given a partition, trim the partition using blocks to make it minimal
+      SUBROUTINE mc70_refine_max_flow(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,&
+               a_n2,a_weight_1,a_weight_2,a_weight_sep,partition,work,control)
+        INTEGER, INTENT(IN) :: a_n ! order of matrix
+        INTEGER, INTENT(IN) :: a_ne ! number of entries in matrix
+        INTEGER, INTENT(IN) :: a_ptr(a_n) ! On input a_ptr(i) contains 
+             ! position in a_row that entries for column i start. 
+        INTEGER, INTENT(IN) :: a_row(a_ne) ! On input a_row contains row 
+             ! indices of the non-zero rows. Diagonal entries have been removed
+             ! and the matrix expanded.
+        INTEGER, INTENT(IN) :: a_weight(a_n) ! On input a_weight(i) contains 
+             ! the weight of column i 
+        INTEGER, INTENT(IN) :: sumweight ! Sum of weights in a_weight
+        INTEGER, INTENT(INOUT) :: a_n1 ! Size of partition 1
+        INTEGER, INTENT(INOUT) :: a_n2 ! Size of partition 2
+        INTEGER, INTENT(INOUT) :: a_weight_1,a_weight_2,a_weight_sep ! Weighted 
+             ! size of partitions and separator
+        INTEGER, INTENT(INOUT) :: partition(a_n) !First a_n1 entries contain
+             ! list of (local) indices in partition 1; next a_n2 entries  
+             ! contain list of (local) entries in partition 2; entries in 
+             ! separator are listed at the end. This is updated to the new 
+             ! partition
+        INTEGER, INTENT(OUT) :: work(8*a_n+sumweight+a_ne/2) ! Work array
+        TYPE(mc70_control), INTENT(IN) :: control
+
+! ---------------------------------------------
+! Local variables
+        INTEGER :: msglvl
+        REAL (myreal_mc70) :: cost
+        msglvl = 0
+        IF (control%print_level==1 .AND. control%unit_diagnostics>=0) msglvl = 1
+        IF (control%print_level>=2 .AND. control%unit_diagnostics>=0) msglvl = 3
+ 
+    !  call check_partition1(a_n,a_ne,a_ptr,a_row,a_n1,a_n2,partition)
+       CALL mc70_maxflow(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,&
+               a_n2,a_weight_1,a_weight_2,a_weight_sep,partition, &
+               control%ratio,0.5_myreal_mc70,msglvl,work(1:8),cost)
+        
+      call check_partition1(a_n,a_ne,a_ptr,a_row,a_n1,a_n2,partition)
+
+      END SUBROUTINE mc70_refine_max_flow
+   
+      SUBROUTINE check_partition1(a_n,a_ne,a_ptr,a_row,a_n1,a_n2,partition)
+        INTEGER, INTENT(IN) :: a_n ! order of matrix
+        INTEGER, INTENT(IN) :: a_ne ! number of entries in matrix
+        INTEGER, INTENT(IN) :: a_ptr(a_n) ! On input a_ptr(i) contains 
+             ! position in a_row that entries for column i start. 
+        INTEGER, INTENT(IN) :: a_row(a_ne) ! On input a_row contains row 
+             ! indices of the non-zero rows. Diagonal entries have been removed
+             ! and the matrix expanded.
+        INTEGER, INTENT(IN) :: a_n1 
+        INTEGER, INTENT(IN) :: a_n2 
+        INTEGER, INTENT (IN) :: partition(a_n)
+
+        INTEGER :: i, j, flag, c1, c2, k
+        INTEGER, ALLOCATABLE :: flags(:)
+
+        ALLOCATE(flags(a_n))
+        flags(:) = -1
+      !  write(*,*) partition
+
+        DO i=1,a_n
+          IF (flags(partition(i)) .NE. -1 ) THEN
+              write(*,*) 'ERROR', partition(i), ' already appeared'
+          ELSE
+             flags(partition(i)) = 0
+           END IF
+        END DO
+
+
+        flags(:) = -1
+        DO i=1,a_n1
+           flags(partition(i)) = mc70_part1_flag
+        END DO
+        DO i=a_n1+1,a_n1+a_n2
+           flags(partition(i)) = mc70_part2_flag
+        END DO
+        DO i=a_n1+a_n2+1,a_n
+           flags(partition(i)) = mc70_sep_flag
+        END DO
+        c1 = 0
+        c2 = 0
+        DO i = 1, a_n
+
+          flag = flags(i)
+          SELECT CASE (flag)
+          CASE (mc70_part1_flag)
+           c1 = c1+1
+          CASE (mc70_part2_flag)
+           c2 = c2+1
+          END SELECT
+          IF ( .NOT. (flag==mc70_sep_flag)) THEN
+            IF (i .EQ. a_n) THEN
+               k = a_ne
+            ELSE 
+               k =  a_ptr(i+1) - 1
+            END IF
+            DO j = a_ptr(i), k
+              IF ( .NOT. ((flags(a_row(j))== &
+                  flag) .OR. (flags(a_row(j))==mc70_sep_flag))) THEN
+              !  WRITE (*,*) 'ERROR IN PARTITION!', flag, &
+               !   partition(a_row(j)),i
+              END IF
+              IF (i==a_row(j)) THEN
+                WRITE (*,*) 'ERROR, diagonal entry present'
+              END IF
+
+            END DO
+          END IF
+
+
+        END DO
+        IF (c1.NE.a_n1.OR.c2.NE.a_n2) THEN
+             WRITE (*,*) 'ERROR IN PARTITION! components wrong'
+        END IF
+        DEALLOCATE(flags)
+
+      END SUBROUTINE check_partition1
 
       SUBROUTINE expand_partition(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,&
                a_n2,a_weight_1,a_weight_2,a_weight_sep,partition,work,control)
@@ -8723,9 +8985,9 @@ INNER:    DO inn = 1, n
         LOGICAL, INTENT(IN) :: imbal ! Use penalty function?
         REAL(myreal_mc70), INTENT(OUT) :: tau
         REAL(myreal_mc70) :: beta
-        beta = 0.000375
+        beta = 0.5
 
-       IF (.true.) THEN
+       IF (.false.) THEN
         IF (imbal .AND. real(max(a_weight_1,a_weight_2))/ &
                    real(min(a_weight_1,a_weight_2)) .GE. ratio ) THEN
            tau = real(sumweight-2) + real(max(a_weight_1,a_weight_2))/ &
