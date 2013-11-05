@@ -1821,18 +1821,18 @@ MODULE hsl_mc70_double
             part_ptr = work_ptr+8*a_n+sumweight+a_ne/2+1
             work(part_ptr+1:part_ptr+a_n) = work(partition_ptr+1:partition_ptr+a_n)
            DO i=1,k
-          !  CALL expand_partition_simple(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
-          !     a_n1_new,a_n2_new,a_weight_1_new,a_weight_2_new,&
-          !     a_weight_sep_new,work(part_ptr+1:part_ptr+a_n),&
-          !     work(work_ptr+1:work_ptr+a_n),control)
+            CALL expand_partition_simple(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
+               a_n1_new,a_n2_new,a_weight_1_new,a_weight_2_new,&
+               a_weight_sep_new,work(part_ptr+1:part_ptr+a_n),&
+               work(work_ptr+1:work_ptr+a_n),control)
           ! write(*,*) 'zzz',a_weight_1_new,a_weight_2_new,&
           !     a_weight_sep_new
 
-            CALL expand_partition_kinks(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
-               3,10.0_myreal_mc70,1.0_myreal_mc70,a_n1_new,a_n2_new,&
-                a_weight_1_new,a_weight_2_new,&
-               a_weight_sep_new,work(part_ptr+1:part_ptr+a_n),&
-               work(work_ptr+1:work_ptr+5*a_n),control)
+          !  CALL expand_partition_kinks(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
+          !     3,10.0_myreal_mc70,1.0_myreal_mc70,a_n1_new,a_n2_new,&
+          !      a_weight_1_new,a_weight_2_new,&
+          !     a_weight_sep_new,work(part_ptr+1:part_ptr+a_n),&
+          !     work(work_ptr+1:work_ptr+5*a_n),control)
            
            IF (ref_method .EQ. 0) THEN
 

@@ -136,8 +136,8 @@ do ii = 1,nedge
 ! --- ignore self edges ---
   if (u == v) cycle 
 ! --- omit edges with essential vertices ---
-  if (bandg%isAdjToSink(u) == 1 .and. bandg%isAdjToSource(u) ==1) cycle
-  if (bandg%isAdjToSink(v) == 1 .and. bandg%isAdjToSource(v) ==1) cycle
+!  if (bandg%isAdjToSink(u) == 1 .and. bandg%isAdjToSource(u) ==1) cycle
+!  if (bandg%isAdjToSink(v) == 1 .and. bandg%isAdjToSource(v) ==1) cycle
 ! --- omit pairs both adjacent to source ---
 !  rc1 = bitand(isAdj(u), 1) ; rc2 = bitand(isAdj(v), 1) ;
 !  rc3 = bitand(rc1, rc2) ;
@@ -248,10 +248,11 @@ do ii = 1,nedge
   ! HST: BUG - logic incorrect - added last 2 lines of logic to correspond to 
   !  logic for computing narc4 
   if ((u /= v) .and.  &
-     (bandg%isAdjToSource(u) /= 1 .OR. bandg%isAdjToSource(v) /= 1) .and.  &
-     (bandg%isAdjToSink(u)   /= 1 .OR. bandg%isAdjToSink(v)   /= 1) .and.  &
-     (bandg%isAdjToSource(u) /= 1 .OR. bandg%isAdjToSink(u) /= 1) .and.  &
-     (bandg%isAdjToSource(v) /= 1 .OR. bandg%isAdjToSink(v) /= 1)  ) then
+     (bandg%isAdjToSource(u) /= 1 .OR. bandg%isAdjToSource(v) /= 1)   &
+    .and. (bandg%isAdjToSink(u)   /= 1 .OR. bandg%isAdjToSink(v)   /= 1)  &
+    !.and.  (bandg%isAdjToSource(u) /= 1 .OR. bandg%isAdjToSink(u) /= 1)   &
+    !.and. (bandg%isAdjToSource(v) /= 1 .OR. bandg%isAdjToSink(v) /= 1)   &
+      ) then
     iarc = iarc + 1
     netw%firsts(iarc) = 2*u + 1
     netw%seconds(iarc) = 2*v

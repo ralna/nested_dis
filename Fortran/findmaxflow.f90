@@ -74,7 +74,7 @@ do
   do
     avail = netw%capacities(iarc) - netw%flows(iarc)
     if (msglvl > 0) &
-       write(lp,'(A,I8,A,I4,A,I4,A,I8,A,I8,A,I8)') 'iarc',iarc,   &
+       write(lp,'(A,I8,A,I4,A,I4,A,I8,A,I8,A,I8)') 'iarc3',iarc,   &
              ', (',netw%firsts(iarc),',',netw%seconds(iarc),'), cap',  &
              netw%capacities(iarc),', flow',netw%flows(iarc),', avail',avail
     if (avail > 0) then
@@ -109,6 +109,9 @@ do
 !ISD Seems a redundant statement or am I missing some matlab subtlty
 !         network.flows = flows ;
 !         flows = network.flows ;
+! HST: add exit for avail==0 to stop indefinite loop
+    else
+       exit
     endif
 !     keyboard ;
   enddo
@@ -120,7 +123,10 @@ do
       write(lp,'(A,I8,A,I8)') 'moving to arc', iarc, ', tag', tag
 enddo
 
-deallocate(pred)
+! HST: check whether pred is allocated because it might not be
+if (allocated(pred)) then
+    deallocate(pred)
+end if
 
 if (msglvl > 0) then
    write(lp,'(A)') '### leaving network_findmaxflow()'
