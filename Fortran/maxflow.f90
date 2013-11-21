@@ -284,8 +284,8 @@ endif
 
 ! Use evaluation function to choose best partition from among these two
 ! Pass all of matrix A
-call evalBSW(a_n,a_ptr,a_row, mapL, alpha, beta, statsL, costL)
-call evalBSW(a_n,a_ptr,a_row, mapR, alpha, beta, statsR, costR)
+call evalBSW(a_n,a_ne, a_ptr,a_row, a_weight, mapL, alpha, beta, statsL, costL)
+call evalBSW(a_n,a_ne, a_ptr,a_row, a_weight, mapR, alpha, beta, statsR, costR)
 !  statsL = evalBSW(A, mapL, params(1), params(2), msglvl) ;
 !  statsR = evalBSW(A, mapR, params(1), params(2), msglvl) ;
 if (msglvl > 0) then

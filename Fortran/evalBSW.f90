@@ -1,4 +1,4 @@
-subroutine evalBSW (a_n, a_ptr, a_row, map, alpha, beta, stats, stats10)
+subroutine evalBSW (a_n, a_ne, a_ptr, a_row, a_weight, map, alpha, beta, stats, stats10)
 !Matlab call
 !function stats = evalBSW ( A, map, alpha, beta, msglvl )
 ! 
@@ -30,7 +30,8 @@ subroutine evalBSW (a_n, a_ptr, a_row, map, alpha, beta, stats, stats10)
 !
 implicit none
 integer, intent(in) :: a_n
-integer, intent(in) :: map(:),a_ptr(:),a_row(:)
+integer, intent(in) :: a_ne
+integer, intent(in) :: map(:),a_ptr(:),a_row(:),a_weight(:)
 real(wp), intent(in) :: alpha, beta
 integer, intent(out) :: stats(9)
 real(wp), intent(out) :: stats10
@@ -44,11 +45,11 @@ nB = 0
 nW = 0
 do u = 1,nvtx
    if (map(u) == 0) then
-      nS = nS + 1
+      nS = nS + a_weight(u)
    elseif (map(u) == 1) then
-      nB = nB + 1
+      nB = nB + a_weight(u)
    elseif (map(u) == 2) then
-      nW = nW + 1
+      nW = nW + a_weight(u)
    endif
 enddo
 stats(1) = nS
@@ -67,7 +68,7 @@ nWW = 0
 do j = 1,a_n
   j1 = a_ptr(j)
   if (j.eq.a_n) then
-   j2 = size(a_row)
+   j2 = a_ne
   else
    j2 = a_ptr(j+1)-1
   end if
@@ -103,6 +104,8 @@ stats(8) = nWW
 !       acceptable --> alpha*min(|B|,|W|) >= max(|B|,|W|) 
 !    stats[10] -- cost of partition
 !       cost = |S|*(1 + (beta*| |B| - |W| |)/(|B|+|S|+|W|)) ;
+!     or
+!       cost = |S|/(|B||W|)
 if (alpha*minBW >= maxBW) then
    stats(9) = 1
 else
@@ -112,6 +115,7 @@ endif
 !write(lp,'(A,I4)') 'ns',nS
 !write(lp,'(A,D12.4)') 'diffBW',diffBW
 !write(lp,'(A,D12.4)') 'beta',beta
-stats10 = real(nS)*(1.0d0 + beta*diffBW)
+!stats10 = real(nS)*(1.0d0 + beta*diffBW)
+stats10 = (real(nS)/real(nW))/real(nB)
 
 end subroutine evalBSW

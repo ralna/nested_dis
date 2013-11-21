@@ -181,6 +181,7 @@ do ii = 2,nnode-1,2
 enddo
 if (msglvl > 0) then
    write(lp,'(A)')  '### leaving solvemaxflow()'
+   write(lp,*) netw%flows(:)
    write(lp,'(A)')  ''
 endif
 

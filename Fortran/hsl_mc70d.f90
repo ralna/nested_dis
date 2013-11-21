@@ -1037,7 +1037,7 @@ MODULE hsl_mc70_double
         a_ne_out = a_ne_in
 
         DO WHILE (real(degree) - real(a_ne_out)/real(a_n_out)>= &
-          20*(real(a_n_out-1)/real(a_n_out))*log(real(a_n_out)) &
+          40*(real(a_n_out-1)/real(a_n_out))*log(real(a_n_out)) &
           .AND. degree>0)
    !     DO WHILE (real(degree) - real(a_ne_out)/real(a_n_out)>= &
    !       300*(real(a_n_out-1)/real(a_n_out)) &
@@ -1271,9 +1271,10 @@ MODULE hsl_mc70_double
 ! nd_switch
         IF (level .GE. control%nd_max_levels .OR. a_n .LE. max(2,control%nd_switch)) &
            GOTO 30
-          CALL mc70_partition(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,level,a_n1,a_n2,&
+        CALL mc70_partition(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,level,a_n1,a_n2,&
             a_ne1,a_ne2,iperm,work(1:12*a_n+sumweight+a_ne),control,info,&
             use_multilevel)
+           
         
         IF (a_n1 .EQ. a_n) THEN
            GOTO 30
@@ -1752,19 +1753,23 @@ MODULE hsl_mc70_double
            END IF
             
            IF (ref_method .EQ. 0) THEN
+            !  write(*,*) 'premax',a_n,a_n1,a_n2
               CALL mc70_refine_max_flow(a_n,a_ne,a_ptr,a_row,a_weight,&
                sumweight,a_n1,a_n2,&
                a_weight_1,a_weight_2,a_weight_sep,&
                work(partition_ptr+1:partition_ptr+a_n),&
                work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control) 
+            !  write(*,*) 'postmax',a_n,a_n1,a_n2
          
-             CALL mc70_refine(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,a_n2,&
-               a_weight_1,a_weight_2,a_weight_sep,&
-               work(partition_ptr+1:partition_ptr+a_n),&
-               work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control,ref_method) 
+           !  CALL mc70_refine(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,a_n2,&
+           !    a_weight_1,a_weight_2,a_weight_sep,&
+           !    work(partition_ptr+1:partition_ptr+a_n),&
+           !    work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control,ref_method) 
+             ! write(*,*) 'postfm',a_n,a_n1,a_n2
            ELSE 
             IF (ref_method .EQ. 1) THEN
              IF (control%block) THEN
+              write(*,*) 'block1'
               CALL mc70_refine_block_trim(a_n,a_ne,a_ptr,a_row,a_weight,&
                sumweight,a_n1,a_n2,a_weight_1,a_weight_2,a_weight_sep,&
                work(partition_ptr+1:partition_ptr+a_n),&
@@ -1821,10 +1826,12 @@ MODULE hsl_mc70_double
             part_ptr = work_ptr+8*a_n+sumweight+a_ne/2+1
             work(part_ptr+1:part_ptr+a_n) = work(partition_ptr+1:partition_ptr+a_n)
            DO i=1,k
+         !   write(*,*) 'expand1',a_n,a_n1,a_n2
             CALL expand_partition_simple(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
                a_n1_new,a_n2_new,a_weight_1_new,a_weight_2_new,&
                a_weight_sep_new,work(part_ptr+1:part_ptr+a_n),&
                work(work_ptr+1:work_ptr+a_n),control)
+         !   write(*,*) 'expand2',a_n,a_n1,a_n2
           ! write(*,*) 'zzz',a_weight_1_new,a_weight_2_new,&
           !     a_weight_sep_new
 
@@ -1842,15 +1849,16 @@ MODULE hsl_mc70_double
                work(part_ptr+1:part_ptr+a_n),&
                work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control) 
              !IF (i.EQ.k) THEN
-             CALL mc70_refine(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1_new,a_n2_new,&
-               a_weight_1_new,a_weight_2_new,a_weight_sep_new,&
-               work(part_ptr+1:part_ptr+a_n),&
-               work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control,ref_method) 
+            ! CALL mc70_refine(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1_new,a_n2_new,&
+            !   a_weight_1_new,a_weight_2_new,a_weight_sep_new,&
+            !   work(part_ptr+1:part_ptr+a_n),&
+            !   work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control,ref_method) 
 
            ELSE
 
             IF (ref_method .EQ. 1) THEN
              IF (control%block) THEN
+              write(*,*) 'block2'
               CALL mc70_refine_block_trim(a_n,a_ne,a_ptr,a_row,a_weight,&
                sumweight,a_n1_new,a_n2_new,a_weight_1_new,a_weight_2_new,&
                a_weight_sep_new,work(part_ptr+1:part_ptr+a_n),&
@@ -2130,7 +2138,7 @@ MODULE hsl_mc70_double
          END DO
         END SELECT
        END IF
-       max_search = 1
+       max_search = 5
         
        IF (nend .LT. 1 .OR. nend.GT. a_n) THEN
         CALL mc70_find_pseudo(a_n,a_ne,a_ptr,a_row,&
@@ -2146,6 +2154,15 @@ MODULE hsl_mc70_double
           num_levels_nend,lwidth,num_entries)
        ! write(*,*) work(level_ptr_p+1:level_ptr_p+num_levels_nend)
        END IF
+      if (num_entries .lt. a_n) then
+       if (level.EQ.0) write(*,*) 'diam',-num_levels_nend, a_n, -real(num_levels_nend)/real(a_n), &
+             -(real(num_levels_nend)/real(a_n))/real(a_n),&
+              -((real(num_levels_nend)/real(a_n))/real(a_n))/real(a_n)
+      else
+       if (level.EQ.0) write(*,*) 'diam',num_levels_nend, a_n, real(num_levels_nend)/real(a_n), &
+             (real(num_levels_nend)/real(a_n))/real(a_n),&
+              ((real(num_levels_nend)/real(a_n))/real(a_n))/real(a_n)
+      end if
 
         IF (num_entries .lt. a_n) THEN
            ! matrix is separable
@@ -2168,7 +2185,10 @@ MODULE hsl_mc70_double
                j = j+1
              END IF
 
-           END DO                     
+           END DO     
+        IF (level .EQ. 0) THEN
+             band = -100.0*real(lwidth,kind(1.0D0))/real(a_n1,kind(1.0D0))
+        END IF                
 
            RETURN
         END IF
@@ -2431,7 +2451,7 @@ MODULE hsl_mc70_double
             nstrt = i
           END IF
         END DO
-        max_search = a_n
+        max_search = 5
 
         CALL mc70_find_pseudo(a_n,a_ne,a_ptr,a_row,&
            work(level_ptr_p+1:level_ptr_p+a_n),work(level_p+1:level_p+a_n),&
@@ -2617,6 +2637,7 @@ MODULE hsl_mc70_double
         work(mask+1:mask+a_n) = 1
         work(list+1:list+a_n) = 0
         level_ptr(:) = 0
+        
 
 ! First guess for starting node is input nstrt
 
@@ -2625,6 +2646,7 @@ MODULE hsl_mc70_double
           work(mask+1:mask+a_n),level_ptr,level,maxdep,lwidth,num_entries)
         IF (num_entries .lt. a_n) THEN
           ! matrix is separable
+          num_levels = maxdep
           RETURN
 
         END IF
@@ -6538,16 +6560,17 @@ INNER:    DO inn = 1, n
              work(partition_ptr+1:partition_ptr+grid%graph%n),&
              work1(1:8*grid%graph%n+sumweight+a_ne/2),&
              control) 
-            CALL mc70_refine(grid%graph%n,a_ne,grid%graph%ptr,&
-             grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
-             grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
-             work(partition_ptr+1:partition_ptr+grid%graph%n),&
-             work1(1:8*grid%graph%n+sumweight+a_ne/2),&
-             control,ref_method) 
+          !  CALL mc70_refine(grid%graph%n,a_ne,grid%graph%ptr,&
+          !   grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
+          !   grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
+          !   work(partition_ptr+1:partition_ptr+grid%graph%n),&
+          !   work1(1:8*grid%graph%n+sumweight+a_ne/2),&
+          !   control,ref_method) 
          ELSE
 
           IF (ref_method .EQ. 1) THEN
            IF (control%block) THEN
+              write(*,*) 'block3'
             CALL mc70_refine_block_trim(grid%graph%n,a_ne,grid%graph%ptr,&
              grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
              grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
@@ -6617,15 +6640,16 @@ INNER:    DO inn = 1, n
              work(partition_ptr+1:partition_ptr+grid%graph%n),&
              work(work_ptr+1:work_ptr+8*grid%graph%n+sumweight+a_ne/2),&
              control) 
-            CALL mc70_refine(grid%graph%n,a_ne,grid%graph%ptr,&
-             grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
-             grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
-             work(partition_ptr+1:partition_ptr+grid%graph%n),&
-             work(work_ptr+1:work_ptr+8*grid%graph%n+sumweight+a_ne/2),&
-             control,ref_method) 
+          !  CALL mc70_refine(grid%graph%n,a_ne,grid%graph%ptr,&
+          !   grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
+          !   grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
+          !   work(partition_ptr+1:partition_ptr+grid%graph%n),&
+          !   work(work_ptr+1:work_ptr+8*grid%graph%n+sumweight+a_ne/2),&
+          !   control,ref_method) 
         ELSE
          IF (ref_method .LE. 1) THEN
            IF (control%block) THEN
+              write(*,*) 'block4'
             CALL mc70_refine_block_trim(grid%graph%n,a_ne,grid%graph%ptr,&
              grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
              grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
@@ -6812,13 +6836,14 @@ INNER:    DO inn = 1, n
                a_weight_1,a_weight_2,a_weight_sep,&
                work(partition_ptr+1:partition_ptr+a_n),&
                work1(1:8*a_n+sumweight+a_ne/2),control) 
-            CALL mc70_refine(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,a_n2,&
-               a_weight_1,a_weight_2,a_weight_sep,&
-               work(partition_ptr+1:partition_ptr+a_n),&
-               work1(1:8*a_n+sumweight+a_ne/2),control,ref_method) 
+           ! CALL mc70_refine(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,a_n2,&
+           !    a_weight_1,a_weight_2,a_weight_sep,&
+           !    work(partition_ptr+1:partition_ptr+a_n),&
+           !    work1(1:8*a_n+sumweight+a_ne/2),control,ref_method) 
           ELSE
            IF (ref_method .EQ. 1) THEN
             IF (control%block) THEN
+              write(*,*) 'block5'
              CALL mc70_refine_block_trim(a_n,a_ne,a_ptr,a_row,a_weight,&
                sumweight,a_n1,a_n2,&
                a_weight_1,a_weight_2,a_weight_sep,&
@@ -6918,13 +6943,14 @@ INNER:    DO inn = 1, n
                a_weight_1,a_weight_2,a_weight_sep,&
                work(partition_ptr+1:partition_ptr+a_n),&
                work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control) 
-             CALL mc70_refine(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,a_n2,&
-               a_weight_1,a_weight_2,a_weight_sep,&
-               work(partition_ptr+1:partition_ptr+a_n),&
-               work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control,ref_method) 
+           !  CALL mc70_refine(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,a_n2,&
+           !    a_weight_1,a_weight_2,a_weight_sep,&
+           !    work(partition_ptr+1:partition_ptr+a_n),&
+           !    work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control,ref_method) 
            ELSE
            IF (ref_method .EQ. 1) THEN
             IF (control%block) THEN
+              write(*,*) 'block6'
              CALL mc70_refine_block_trim(a_n,a_ne,a_ptr,a_row,a_weight,&
                sumweight,a_n1,a_n2,&
                a_weight_1,a_weight_2,a_weight_sep,&
@@ -8386,7 +8412,8 @@ INNER:    DO inn = 1, n
         END SELECT
       END DO
       a_weight_sep = sumweight - a_weight_1 - a_weight_2
-      call check_partition1(a_n,a_ne,a_ptr,a_row,a_n1,a_n2,partition)
+     ! call check_partition1(a_n,a_ne,a_ptr,a_row,a_n1,a_n2,partition)
+      write(*,*) 'blocky'
 
       END SUBROUTINE mc70_refine_block_trim
 
@@ -8425,13 +8452,15 @@ INNER:    DO inn = 1, n
         msglvl = 0
         IF (control%print_level==1 .AND. control%unit_diagnostics>=0) msglvl = 1
         IF (control%print_level>=2 .AND. control%unit_diagnostics>=0) msglvl = 3
- 
-    !  call check_partition1(a_n,a_ne,a_ptr,a_row,a_n1,a_n2,partition)
+     ! call check_partition1(a_n,a_ne,a_ptr,a_row,a_n1,a_n2,partition)
+
+      if (a_n - a_n1 - a_n2>1) then 
        CALL mc70_maxflow(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,&
                a_n2,a_weight_1,a_weight_2,a_weight_sep,partition, &
                control%ratio,0.5_myreal_mc70,msglvl,work(1:8),cost)
+      end if
         
-      call check_partition1(a_n,a_ne,a_ptr,a_row,a_n1,a_n2,partition)
+    !  call check_partition1(a_n,a_ne,a_ptr,a_row,a_n1,a_n2,partition)
 
       END SUBROUTINE mc70_refine_max_flow
    
@@ -8452,7 +8481,6 @@ INNER:    DO inn = 1, n
 
         ALLOCATE(flags(a_n))
         flags(:) = -1
-      !  write(*,*) partition
 
         DO i=1,a_n
           IF (flags(partition(i)) .NE. -1 ) THEN
@@ -8493,8 +8521,8 @@ INNER:    DO inn = 1, n
             DO j = a_ptr(i), k
               IF ( .NOT. ((flags(a_row(j))== &
                   flag) .OR. (flags(a_row(j))==mc70_sep_flag))) THEN
-              !  WRITE (*,*) 'ERROR IN PARTITION!', flag, &
-               !   partition(a_row(j)),i
+                WRITE (*,*) 'ERROR IN PARTITION!', flag, &
+                  flags(a_row(j)),partition(a_row(j)),i
               END IF
               IF (i==a_row(j)) THEN
                 WRITE (*,*) 'ERROR, diagonal entry present'
@@ -8987,7 +9015,7 @@ INNER:    DO inn = 1, n
         REAL(myreal_mc70) :: beta
         beta = 0.5
 
-       IF (.false.) THEN
+       IF (.true.) THEN
         IF (imbal .AND. real(max(a_weight_1,a_weight_2))/ &
                    real(min(a_weight_1,a_weight_2)) .GE. ratio ) THEN
            tau = real(sumweight-2) + real(max(a_weight_1,a_weight_2))/ &

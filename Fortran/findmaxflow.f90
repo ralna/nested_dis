@@ -74,7 +74,7 @@ do
   do
     avail = netw%capacities(iarc) - netw%flows(iarc)
     if (msglvl > 0) &
-       write(lp,'(A,I8,A,I4,A,I4,A,I8,A,I8,A,I8)') 'iarc3',iarc,   &
+       write(lp,'(A,I8,A,I4,A,I4,A,I8,A,I8,A,I8)') 'iarc',iarc,   &
              ', (',netw%firsts(iarc),',',netw%seconds(iarc),'), cap',  &
              netw%capacities(iarc),', flow',netw%flows(iarc),', avail',avail
     if (avail > 0) then
@@ -109,7 +109,7 @@ do
 !ISD Seems a redundant statement or am I missing some matlab subtlty
 !         network.flows = flows ;
 !         flows = network.flows ;
-! HST: add exit for avail==0 to stop indefinite loop
+! HST: add exit for avail==0 to stop infinite loop
     else
        exit
     endif
