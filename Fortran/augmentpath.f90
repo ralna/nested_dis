@@ -40,7 +40,7 @@ if (msglvl > 0) then
 endif
 
 if (delta <= 0 .OR. pred(sink) <= 0) then
-  write(lp,'(A,I4,A,I4)')  'ERROR : delta', delta, ', pred(sink) = ',pred(sink)
+  write(lp,'(A,I24,A,I4)')  'ERROR : delta', delta, ', pred(sink) = ',pred(sink)
   return
 endif
 

@@ -50,6 +50,9 @@ MODULE hsl_mc70_double
            ! <= 0 : do not use multilevel
            ! == 1 : use multilevel
            ! >= 2 : automatic choice based on size of levelsets
+        INTEGER :: coarsen = 1 ! Which coarsening method to use
+           ! > 0 : heavy-edge
+           ! <= 0 : common neighbours
         INTEGER :: nd_max_levels = 20 ! maximum number of ND levels to be performed
         INTEGER :: nd_switch = 50 ! switch to (halo)AMD if matrix size
                  ! is less than or equal to nd_switch 
@@ -1769,8 +1772,7 @@ MODULE hsl_mc70_double
            ELSE 
             IF (ref_method .EQ. 1) THEN
              IF (control%block) THEN
-              write(*,*) 'block1'
-              CALL mc70_refine_block_trim(a_n,a_ne,a_ptr,a_row,a_weight,&
+              CALL mc70_refine_block_trim_new(a_n,a_ne,a_ptr,a_row,a_weight,&
                sumweight,a_n1,a_n2,a_weight_1,a_weight_2,a_weight_sep,&
                work(partition_ptr+1:partition_ptr+a_n),&
                work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control) 
@@ -1827,19 +1829,21 @@ MODULE hsl_mc70_double
             work(part_ptr+1:part_ptr+a_n) = work(partition_ptr+1:partition_ptr+a_n)
            DO i=1,k
          !   write(*,*) 'expand1',a_n,a_n1,a_n2
-            CALL expand_partition_simple(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
-               a_n1_new,a_n2_new,a_weight_1_new,a_weight_2_new,&
-               a_weight_sep_new,work(part_ptr+1:part_ptr+a_n),&
-               work(work_ptr+1:work_ptr+a_n),control)
+         !   CALL expand_partition_simple(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
+         !      a_n1_new,a_n2_new,a_weight_1_new,a_weight_2_new,&
+         !      a_weight_sep_new,work(part_ptr+1:part_ptr+a_n),&
+         !      work(work_ptr+1:work_ptr+a_n),control)
          !   write(*,*) 'expand2',a_n,a_n1,a_n2
           ! write(*,*) 'zzz',a_weight_1_new,a_weight_2_new,&
           !     a_weight_sep_new
 
-          !  CALL expand_partition_kinks(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
-          !     3,10.0_myreal_mc70,1.0_myreal_mc70,a_n1_new,a_n2_new,&
-          !      a_weight_1_new,a_weight_2_new,&
-          !     a_weight_sep_new,work(part_ptr+1:part_ptr+a_n),&
-          !     work(work_ptr+1:work_ptr+5*a_n),control)
+            CALL expand_partition_kinks(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
+               3,10.0_myreal_mc70,1.0_myreal_mc70,a_n1_new,a_n2_new,&
+                a_weight_1_new,a_weight_2_new,&
+               a_weight_sep_new,work(part_ptr+1:part_ptr+a_n),&
+               work(work_ptr+1:work_ptr+5*a_n),control)
+
+          ! call check_partition1(a_n,a_ne,a_ptr,a_row,a_n1_new,a_n2_new,work(part_ptr+1:part_ptr+a_n))
            
            IF (ref_method .EQ. 0) THEN
 
@@ -1858,8 +1862,7 @@ MODULE hsl_mc70_double
 
             IF (ref_method .EQ. 1) THEN
              IF (control%block) THEN
-              write(*,*) 'block2'
-              CALL mc70_refine_block_trim(a_n,a_ne,a_ptr,a_row,a_weight,&
+              CALL mc70_refine_block_trim_new(a_n,a_ne,a_ptr,a_row,a_weight,&
                sumweight,a_n1_new,a_n2_new,a_weight_1_new,a_weight_2_new,&
                a_weight_sep_new,work(part_ptr+1:part_ptr+a_n),&
                work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control) 
@@ -2154,6 +2157,7 @@ MODULE hsl_mc70_double
           num_levels_nend,lwidth,num_entries)
        ! write(*,*) work(level_ptr_p+1:level_ptr_p+num_levels_nend)
        END IF
+      IF (.false.) THEN
       if (num_entries .lt. a_n) then
        if (level.EQ.0) write(*,*) 'diam',-num_levels_nend, a_n, -real(num_levels_nend)/real(a_n), &
              -(real(num_levels_nend)/real(a_n))/real(a_n),&
@@ -2163,6 +2167,7 @@ MODULE hsl_mc70_double
              (real(num_levels_nend)/real(a_n))/real(a_n),&
               ((real(num_levels_nend)/real(a_n))/real(a_n))/real(a_n)
       end if
+      END IF
 
         IF (num_entries .lt. a_n) THEN
            ! matrix is separable
@@ -4668,8 +4673,6 @@ INNER:    DO inn = 1, n
 ! .. Intrinsic Functions ..
         INTRINSIC abs, max, min, mod
 ! ..
-    !   write(11,*) 'lirn', lirn, ne, n
-    !   write(11,*) sep
         me = 0
         nosep = 0
         DO i = 1, n
@@ -6384,7 +6387,11 @@ INNER:    DO inn = 1, n
         END IF
 
 ! Coarsest level not yet reached so carry on coarsening
+       IF (control%coarsen .GT. 0) THEN
         CALL coarsen_hec(mp,print_level,grid,info)
+       ELSE
+        CALL coarsen_cn(mp,print_level,grid,info)
+       END IF
         IF (info<0) RETURN
 
         cgrid => grid%coarse
@@ -6570,8 +6577,7 @@ INNER:    DO inn = 1, n
 
           IF (ref_method .EQ. 1) THEN
            IF (control%block) THEN
-              write(*,*) 'block3'
-            CALL mc70_refine_block_trim(grid%graph%n,a_ne,grid%graph%ptr,&
+            CALL mc70_refine_block_trim_new(grid%graph%n,a_ne,grid%graph%ptr,&
              grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
              grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
              work(partition_ptr+1:partition_ptr+grid%graph%n),&
@@ -6649,8 +6655,7 @@ INNER:    DO inn = 1, n
         ELSE
          IF (ref_method .LE. 1) THEN
            IF (control%block) THEN
-              write(*,*) 'block4'
-            CALL mc70_refine_block_trim(grid%graph%n,a_ne,grid%graph%ptr,&
+            CALL mc70_refine_block_trim_new(grid%graph%n,a_ne,grid%graph%ptr,&
              grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
              grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
              work(partition_ptr+1:partition_ptr+grid%graph%n),&
@@ -6843,8 +6848,7 @@ INNER:    DO inn = 1, n
           ELSE
            IF (ref_method .EQ. 1) THEN
             IF (control%block) THEN
-              write(*,*) 'block5'
-             CALL mc70_refine_block_trim(a_n,a_ne,a_ptr,a_row,a_weight,&
+             CALL mc70_refine_block_trim_new(a_n,a_ne,a_ptr,a_row,a_weight,&
                sumweight,a_n1,a_n2,&
                a_weight_1,a_weight_2,a_weight_sep,&
                work(partition_ptr+1:partition_ptr+a_n),&
@@ -6950,8 +6954,7 @@ INNER:    DO inn = 1, n
            ELSE
            IF (ref_method .EQ. 1) THEN
             IF (control%block) THEN
-              write(*,*) 'block6'
-             CALL mc70_refine_block_trim(a_n,a_ne,a_ptr,a_row,a_weight,&
+             CALL mc70_refine_block_trim_new(a_n,a_ne,a_ptr,a_row,a_weight,&
                sumweight,a_n1,a_n2,&
                a_weight_1,a_weight_2,a_weight_sep,&
                work(partition_ptr+1:partition_ptr+a_n),&
@@ -7127,6 +7130,7 @@ INNER:    DO inn = 1, n
 
 ! find the prolongator
         CALL prolng_heavy_edge(grid,info)
+        
 
         IF (print_level==3) CALL level_print(mp,'after coarsening ', &
           grid%level)
@@ -7134,6 +7138,36 @@ INNER:    DO inn = 1, n
         cgrid%level = grid%level + 1
 
       END SUBROUTINE coarsen_hec
+
+
+!***************************************************************
+      SUBROUTINE coarsen_cn(mp,print_level,grid,info)
+! coarsen the grid using common neighbours collapsing and set up the
+! coarse grid equation, the prolongator and restrictor
+
+        INTEGER, INTENT (IN) :: mp, print_level
+        INTEGER, INTENT (INOUT) :: info
+        TYPE (mc70_multigrid), INTENT (INOUT), TARGET :: grid
+        TYPE (mc70_multigrid), POINTER :: cgrid
+
+        ALLOCATE (cgrid)
+
+        cgrid%fine => grid
+        grid%coarse => cgrid
+
+        IF (print_level==3) CALL level_print(mp,'before coarsening', &
+          grid%level)
+
+! find the prolongator
+        CALL prolng_common_neigh(grid,info)
+        
+
+        IF (print_level==3) CALL level_print(mp,'after coarsening ', &
+          grid%level)
+
+        cgrid%level = grid%level + 1
+
+      END SUBROUTINE coarsen_cn
 
 !********************************************
       SUBROUTINE prolng_heavy_edge(grid,info)
@@ -7327,6 +7361,254 @@ INNER:    DO inn = 1, n
         IF (st/=0) info = mc70_err_memory_alloc
 
       END SUBROUTINE prolng_heavy_edge
+
+!*******************************************************************
+
+      subroutine prolng_common_neigh(grid,ierr)
+
+!    calculate the prolongator:
+!    match the vertices of with most neighbours in common
+
+      integer,  intent(inout) :: ierr
+! input fine grid
+      type (mc70_multigrid), intent (inout) :: grid
+
+! coarse grid based on the fine grid
+      type (mc70_multigrid), pointer :: cgrid
+
+! the fine grid row connectivity graph
+      type (zd11_type), pointer :: graph
+
+! the coarse grid prolongator
+      type (zd11_type), pointer :: p
+
+! the number of fine and coarse grid vertices
+      integer :: nvtx,cnvtx
+
+! working variables
+      integer :: v,u,w,j,i,k,st
+
+      integer, pointer, dimension (:) :: the_row
+      integer, pointer, dimension (:) :: row_u
+
+! whether a vertex is matched already
+      integer, parameter :: unmatched = -1
+
+! matching status of each vertex
+      integer, pointer, dimension (:) :: match
+! flag array to flag up neighbours of a  node
+      integer, pointer, dimension (:) :: flag
+
+! maximum no. neighbours and index of edges connected to the current vertex
+      integer :: max_neigh, maxind, num
+
+! order of which vertex is visited for matching
+!      integer, allocatable, dimension (:) :: order ! this is not used.
+      integer, allocatable, dimension (:) :: nrow
+
+      integer :: info
+      integer :: nz
+
+! allocate the prolongation matrix pointers
+      cgrid => grid%coarse
+      graph => grid%graph
+      allocate(cgrid%p)
+
+! allocate the graph and matrix pointer and the mincut pointer
+! so that everything is defined
+      allocate(cgrid%graph)
+
+      p => cgrid%p
+      nvtx = graph%n
+
+! prolongator start here ================================
+
+! initialise the matching status
+      allocate(match(nvtx),flag(nvtx),stat = st)
+      if (st /= 0) then
+         ierr = mc70_err_memory_alloc
+         return
+      end if
+      match(1:nvtx) = unmatched
+      flag(1:nvtx) = 0
+
+! randomly permute the vertex order
+   !   allocate (order(nvtx),stat=st)
+   !   if (st /= 0) then
+   !      ierr = mc70_err_memory_alloc
+   !      return
+   !   end if
+   !   do i = 1,nvtx
+   !      order(i) = i ! we do not use random permutation
+   !   end do
+
+      allocate (nrow(grid%size),stat=st)
+      if (st /= 0) then
+         ierr = mc70_err_memory_alloc
+         return
+      end if
+
+! loop over each vertex and match based on number of neighbours in common
+      cnvtx = 0
+      nz = 0
+      nrow(1:grid%size) = 0
+      do i = 1, nvtx
+    !   v = order(i)
+        v = i
+! If already matched, next vertex please
+        if (match(v) /= unmatched) cycle
+! access the col. indices of row v
+        call mc65_matrix_getrow(graph,v,the_row)
+
+! in the case no match is found then match itself
+        maxind = v
+! Loop over entries in row v and set flag for each entry
+        flag(v) = i
+        do j = 1, size(the_row)
+! u is col index of en entry in row v (so u is neighbor of v)
+           u = the_row(j)
+           flag(u) = i
+         end do
+! For each unmatched neighbour of v, count the number of
+! neighbours it has in common with v
+        max_neigh = 0
+        do j = 1, size(the_row)
+           u = the_row(j)
+! cycle is u is already matched
+           if (match(u) /= unmatched) cycle
+           call mc65_matrix_getrow(graph,v,row_u)
+           num = 0
+           do k = 1,size(row_u)
+              w = row_u(k)
+              if (flag(w) == i) num = num + 1
+           end do
+           if (num > max_neigh) then
+              max_neigh = num
+              maxind = u
+           end if
+        end do
+
+! the neighbor with largest number of neighbours in common with v
+        match(v) = maxind
+! mark maxind as having been matched
+        match(maxind) = v
+! increase number of vertices in coarse graph by 1
+        cnvtx = cnvtx + 1
+! construct the prolongation matrix: find vertex v and maxind is linked
+! with the coarse grid vertex cnvtx
+        nz = nz + 1
+        nrow(v) = nrow(v) + 1
+        if (maxind /= v) then
+           nz = nz + 1
+           nrow(maxind) = nrow(maxind) + 1
+        end if
+      end do
+
+! storage allocation for col. indices and values of prolongation
+! matrix P (order nvtx * cnvtx)
+      call mc65_matrix_construct(p,nvtx,nz,info,n=cnvtx,type = 'general')
+      if (info < 0) then
+         ierr = info
+         return
+      end if
+      p%val = 0.0_myreal_mc70
+
+! Set column pointers for P
+      p%ptr(1) = 1
+      do i = 1,nvtx
+         p%ptr(i+1) = p%ptr(i) + nrow(i)
+      end do
+
+! the row counter: nothing in matrix P filled yet
+      nrow(1:grid%size) = 0
+
+! Now fill in entries of matrix P
+      match(1:nvtx) = unmatched
+      flag(1:nvtx) = 0
+! loop over each vertex and match based on number of neighbours in common
+      cnvtx = 0
+      do i = 1,nvtx
+    !   v = order(i)
+        v = i
+! if already matched, next vertex please
+        if (match(v) /= unmatched) cycle
+        call mc65_matrix_getrow(graph,v,the_row)
+
+! in the case no match is found then match itself
+        maxind = v
+! Loop over entries in row v and set flag for each entry
+        flag(v) = i
+        do j = 1, size(the_row)
+! u is col index of en entry in row v (so u is neighbor of v)
+           u = the_row(j)
+           flag(u) = i
+         end do
+! For each unmatched neighbour of v, count the number of
+! neighbours it has in common with v
+        max_neigh = 0
+        do j = 1, size(the_row)
+           u = the_row(j)
+! cycle is u is already matched
+           if (match(u) /= unmatched) cycle
+           call mc65_matrix_getrow(graph,v,row_u)
+           num = 0
+           do k = 1,size(row_u)
+              w = row_u(k)
+              if (flag(w) == i) num = num + 1
+           end do
+           if (num > max_neigh) then
+              max_neigh = num
+              maxind = u
+           end if
+        end do
+
+! the neighbor with largest number of neighbours in common with v
+        match(v) = maxind
+! mark maxind as having been matched
+        match(maxind) = v
+! increase number of vertices in coarse graph by 1
+        cnvtx = cnvtx + 1
+! construct the prolongation matrix: vertex v and maxind are linked
+! with the coarse grid vertex cnvtx
+! k points to start of row v and now(v) holds number of
+! entries in row v that have been filled (so k + nrow(v) is
+! first free entry in row v)
+        k = p%ptr(v)
+        p%col(k+nrow(v)) = cnvtx
+        p%val(k+nrow(v)) = 1.0_myreal_mc70
+        nrow(v) = nrow(v) + 1
+
+        if (maxind /= v) then
+           k = p%ptr(maxind)
+           p%col(k+nrow(maxind)) = cnvtx
+           p%val(k+nrow(maxind)) = 1.0_myreal_mc70
+           nrow(maxind) = nrow(maxind) + 1
+        end if
+
+      end do
+
+! deallocate the match pointer for vertices
+      deallocate(match,stat=st)
+      if (st /= 0) then
+         ierr = mc70_err_memory_dealloc
+         return
+      end if
+
+   !   deallocate(order,nrow,stat=st)
+   !   if (st /= 0) then
+   !      ierr = mc70_err_memory_dealloc
+   !      return
+   !   end if
+
+! prolongator end
+! size of coarse grid
+      cgrid%size = cnvtx
+
+! allocate coarse grid quantities
+        ALLOCATE (cgrid%where(cnvtx),cgrid%row_wgt(cnvtx),STAT=st)
+      if (st /= 0) ierr = mc70_err_memory_alloc
+
+      end subroutine prolng_common_neigh
 
 !*******************************************************************
       SUBROUTINE level_print(mp,title1,level,title2,res)
@@ -8413,9 +8695,317 @@ INNER:    DO inn = 1, n
       END DO
       a_weight_sep = sumweight - a_weight_1 - a_weight_2
      ! call check_partition1(a_n,a_ne,a_ptr,a_row,a_n1,a_n2,partition)
-      write(*,*) 'blocky'
 
       END SUBROUTINE mc70_refine_block_trim
+
+! ---------------------------------------------------
+! mc70_refine_block_trim
+! ---------------------------------------------------
+! Given a partition, trim the partition using blocks to make it minimal
+      SUBROUTINE mc70_refine_block_trim_new(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,&
+               a_n2,a_weight_1,a_weight_2,a_weight_sep,partition,work,control)
+        INTEGER, INTENT(IN) :: a_n ! order of matrix
+        INTEGER, INTENT(IN) :: a_ne ! number of entries in matrix
+        INTEGER, INTENT(IN) :: a_ptr(a_n) ! On input a_ptr(i) contains 
+             ! position in a_row that entries for column i start. 
+        INTEGER, INTENT(IN) :: a_row(a_ne) ! On input a_row contains row 
+             ! indices of the non-zero rows. Diagonal entries have been removed
+             ! and the matrix expanded.
+        INTEGER, INTENT(IN) :: a_weight(a_n) ! On input a_weight(i) contains 
+             ! the weight of column i 
+        INTEGER, INTENT(IN) :: sumweight ! Sum of weights in a_weight
+        INTEGER, INTENT(INOUT) :: a_n1 ! Size of partition 1
+        INTEGER, INTENT(INOUT) :: a_n2 ! Size of partition 2
+        INTEGER, INTENT(INOUT) :: a_weight_1,a_weight_2,a_weight_sep ! Weighted 
+             ! size of partitions and separator
+        INTEGER, INTENT(INOUT) :: partition(a_n) !First a_n1 entries contain
+             ! list of (local) indices in partition 1; next a_n2 entries  
+             ! contain list of (local) entries in partition 2; entries in 
+             ! separator are listed at the end. This is updated to the new 
+             ! partition
+        INTEGER, INTENT(OUT) :: work(8*a_n+sumweight+a_ne/2) ! Work array
+        TYPE(mc70_control), INTENT(IN) :: control
+
+! ---------------------------------------------
+! Local variables
+        INTEGER :: work_part, work_next1, work_next2, work_level1, work_level2
+        INTEGER :: a_n1_orig, a_n2_orig
+        INTEGER :: head1, head2, tail1, tail2, maxlevel1, maxlevel2
+        INTEGER :: currlevel1, currlevel2
+        INTEGER :: i,j,k,l,m,p,q,w1,w2,l1,l2,l1new,l2new,ll
+        LOGICAL :: next1, next2, imbal
+        REAL(myreal_mc70) :: t1, t2
+        REAL(myreal_mc70) :: ratio
+      !  write(*,*) 'a_n1,a_n2',a_n1,a_n2
+      !  write(*,*) 'partition'
+      !  write(*,*) partition
+    ! IF (a_n .EQ. 69) write(*,*) 'start', a_n, a_ne, a_n1, a_n2
+        ratio = control%ratio
+        IF (ratio.GT.real(sumweight-2)) THEN
+           imbal = .FALSE.
+        ELSE
+           imbal = .TRUE.
+        END IF
+ 
+        ! Set work(work_part+1:work_part+a_n) to hold flags to indicate what 
+        ! part of the partition the nodes are in
+        work_part = 0
+        k = 0
+        l=0
+        m=0
+        DO i = 1, a_n1
+            j = partition(i)
+            work(work_part+j) = mc70_part1_flag
+            k = k+1
+        END DO
+        DO i = a_n1+1, a_n1+a_n2
+            j = partition(i)
+            work(work_part+j) = mc70_part2_flag
+            l = l+1
+        END DO
+        DO i = a_n1+a_n2+1, a_n
+            j = partition(i)
+            work(work_part+j) = mc70_sep_flag
+            m = m+1
+        END DO
+        a_n1_orig = a_n1
+        a_n2_orig = a_n2
+        a_weight_sep = sumweight - a_weight_1 - a_weight_2
+
+        
+        ! Set work(work_next1+1:work_next1+a_n) to hold list pointers
+        ! Set work(work_next2+1:work_next2+a_n) to hold list pointers
+        ! Set work(work_level1+1:work_level1+a_n) to hold distance from orig partition 1
+        ! Set work(work_level2+1:work_level2+a_n) to hold distance from orig partition 2
+        work_next1 = work_part + a_n
+        work_next2 = work_next1 + a_n
+        work_level1 = work_next2 + a_n
+        work_level2 = work_level1 + a_n
+        work(work_next1+1:work_next1+a_n) = 0
+        work(work_next2+1:work_next2+a_n) = 0
+        work(work_level1+1:work_level1+a_n) = 0
+        work(work_level2+1:work_level2+a_n) = 0
+
+        ! Create two lists
+        head1 = 0
+        head2 = 0
+        l1 = 0
+        l2 = 0
+        DO i = a_n1+a_n2+1, a_n
+            next1 = .false.
+            next2 = .false.
+            j = partition(i)
+            IF (j .LT. a_n) THEN
+             k = a_ptr(j+1)-1
+            ELSE
+             k = a_ne
+            END IF
+            DO l = a_ptr(j),k
+              m = a_row(l)
+              IF (work(work_part+m) .EQ. mc70_part1_flag) THEN
+                next1 = .true.
+              ELSE IF (work(work_part+m) .EQ. mc70_part2_flag) THEN
+                next2 = .true.
+              END IF
+            END DO
+            IF (next1) THEN
+              ! Add to list 1
+              IF (head1.eq.0) THEN
+                head1 = j
+              ELSE
+                work(work_next1 + tail1) = j
+              END IF
+              tail1 = j
+              work(work_level1+j) = 1
+              l1 = l1 + 1
+            END IF
+            IF (next2) THEN
+              ! Add to list 2
+              IF (head2.eq.0) THEN
+                head2 = j
+              ELSE
+                work(work_next2 + tail2) = j
+              END IF
+              tail2 = j
+              work(work_level2+j) = 1
+              l2 = l2 + 1
+            END IF
+        END DO
+
+        ! Breadth first search of separator from entries adjacent to partition 1
+        l1 = head1
+        DO WHILE (l1 .gt. 0)          
+            IF (l1 .LT. a_n) THEN
+             k = a_ptr(l1+1)-1
+            ELSE
+             k = a_ne
+            END IF
+            DO l = a_ptr(l1),k
+              m = a_row(l)
+              IF (work(work_part+m) .EQ. mc70_sep_flag .AND. &
+                   work(work_level1 + m) .EQ. 0) THEN
+                ! Add to list (note list is non-empty)
+                work(work_next1 + tail1) = m
+                tail1 = m
+                work(work_level1+m) = work(work_level1+l1) + 1
+              END IF
+            END DO
+            l1 = work(work_next1+l1)
+        END DO
+        maxlevel1 = work(work_level1+tail1)
+     !   if (a_n .EQ. 69) THEN
+     !     write(*,*) 'maxlevel1',maxlevel1, head1
+     !     write(*,'(10i5)') work(work_level1+1:work_level1+a_n)
+     !     write(*,'(10i5)') work(work_next1+1:work_next1+a_n)
+     !  END IF
+
+        
+        ! Breadth first search of separator from entries adjacent to partition 2
+        l1 = head2
+        DO WHILE (l1 .gt. 0)          
+            IF (l1 .LT. a_n) THEN
+             k = a_ptr(l1+1)-1
+            ELSE
+             k = a_ne
+            END IF
+            DO l = a_ptr(l1),k
+              m = a_row(l)
+              IF (work(work_part+m) .EQ. mc70_sep_flag .AND. &
+                   work(work_level2 + m) .EQ. 0) THEN
+                ! Add to list (note list is non-empty)
+                work(work_next2 + tail2) = m
+                tail2 = m
+                work(work_level2+m) = work(work_level2+l1) + 1
+              END IF
+            END DO
+            l1 = work(work_next2+l1)
+        END DO
+        maxlevel2 = work(work_level2+tail2)
+      !  if (a_n .EQ. 69) THEN
+      !    write(*,*) 'maxlevel2',maxlevel2, head2
+      !    write(*,'(10i5)') work(work_level2+1:work_level2+a_n)
+      !    write(*,'(10i5)') work(work_next2+1:work_next2+a_n)
+      ! END IF
+
+        ! Trim the separator
+        currlevel1 = 1
+        currlevel2 = 1
+        l1 = head1
+        l2 = head2
+        DO WHILE (currlevel1.LE.maxlevel1 .OR. currlevel2.LE.maxlevel2)
+          IF (currlevel1.GT.maxlevel1) THEN
+            t1 = huge(1.0_myreal_mc70)
+          ELSE
+            w1 = 0
+            j = l1
+            DO WHILE (work(work_level1+j).EQ.currlevel1)
+              IF (work(work_level2+j).GT.currlevel2) THEN
+                 w1 = w1 + a_weight(j)
+              END IF
+              j = work(work_next1+j)
+              IF (j .EQ. 0) EXIT
+            END DO
+            IF (w1 .EQ. 0) THEN
+              currlevel1 = currlevel1 + 1
+              l1 = j
+              cycle
+            ELSE            
+             CALL cost_function(a_weight_1+w1,a_weight_2,a_weight_sep-w1,&
+              sumweight,ratio,imbal,t1)
+            END IF
+          END IF
+
+          t2 = -1.0_myreal_mc70
+          IF (currlevel2.GT.maxlevel2) THEN
+            t2 = huge(1.0_myreal_mc70)
+          ELSE
+            w2 = 0
+            j = l2
+            DO WHILE (work(work_level2+j).EQ.currlevel2)
+              IF (work(work_level1+j).GT.currlevel1) THEN
+                 w2 = w2 + a_weight(j)
+              END IF
+              j = work(work_next2+j)
+              IF (j .EQ. 0) EXIT
+            END DO
+            IF (w2 .EQ. 0) THEN
+              currlevel2 = currlevel2 + 1
+              l2 = j
+              cycle
+            ELSE            
+             CALL cost_function(a_weight_1,a_weight_2+w2,a_weight_sep-w2,&
+              sumweight,ratio,imbal,t2)
+            END IF
+          END IF
+
+          ! Add entries to relevant partition and update a_n1, a_n2 etc
+          IF (t1 .LT. t2) THEN
+            j = l1
+            DO WHILE (work(work_level1+j).EQ.currlevel1)
+            !  if (a_n .EQ. 69) write(*,*) 'check ', j, 'for move 1'
+              IF (work(work_level2+j).GT.currlevel2) THEN
+                 work(work_part+j) = mc70_part1_flag
+             !    if (a_n .EQ. 69) write(*,*) 'move to 1', j, currlevel1, currlevel2
+                 a_n1 = a_n1 + 1
+              END IF
+              j = work(work_next1+j)
+              IF (j .EQ. 0) EXIT
+            END DO
+            a_weight_1 = a_weight_1 + w1
+            a_weight_sep = a_weight_sep - w1 
+            l1 = j
+
+          ELSE
+            j = l2
+            DO WHILE (work(work_level2+j).EQ.currlevel2)
+           !   if (a_n .EQ. 69) write(*,*) 'check ', j, 'for move 2'
+              IF (work(work_level1+j).GT.currlevel1) THEN
+                 work(work_part+j) = mc70_part2_flag
+            !     if (a_n .EQ. 69) write(*,*) 'move to 2', j, currlevel1, currlevel2
+                 a_n2 = a_n2 + 1
+              END IF
+              j = work(work_next2+j)
+              IF (j .EQ. 0) EXIT
+            END DO
+            a_weight_2 = a_weight_2 + w2
+            a_weight_sep = a_weight_sep - w2 
+            l2 = j
+
+          END IF
+       !   if (a_n .EQ. 69) write(*,*) 'l1,l2',l1,l2
+
+        END DO
+
+
+    !    if (a_n .EQ. 69) THEN
+    !      write(*,*) 'a_n1,a_n2',a_n1,a_n2
+    !      write(*,'(10i5)') work(work_part+1:work_part+a_n)
+    !   END IF
+      
+      ! Reset partition matrix
+      i = 1
+      j = a_n1+1
+      k = a_n1+a_n2+1
+      DO l = 1,a_n
+        m = work(work_part+l)
+        SELECT CASE (m)
+        CASE (mc70_part1_flag)
+          partition(i) = l
+          i = i+1
+        CASE (mc70_part2_flag)
+          partition(j) = l
+          j = j+1
+        CASE default
+          partition(k) = l
+          k = k+1
+        END SELECT
+      END DO
+      a_weight_sep = sumweight - a_weight_1 - a_weight_2
+      call check_partition1(a_n,a_ne,a_ptr,a_row,a_n1,a_n2,partition)
+    !  write(*,*) 'end'
+
+      END SUBROUTINE mc70_refine_block_trim_new
+
 
 ! ---------------------------------------------------
 ! mc70_refine_block_trim
@@ -8452,7 +9042,7 @@ INNER:    DO inn = 1, n
         msglvl = 0
         IF (control%print_level==1 .AND. control%unit_diagnostics>=0) msglvl = 1
         IF (control%print_level>=2 .AND. control%unit_diagnostics>=0) msglvl = 3
-     ! call check_partition1(a_n,a_ne,a_ptr,a_row,a_n1,a_n2,partition)
+    !  call check_partition1(a_n,a_ne,a_ptr,a_row,a_n1,a_n2,partition)
 
       if (a_n - a_n1 - a_n2>1) then 
        CALL mc70_maxflow(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,&
@@ -8484,7 +9074,7 @@ INNER:    DO inn = 1, n
 
         DO i=1,a_n
           IF (flags(partition(i)) .NE. -1 ) THEN
-              write(*,*) 'ERROR', partition(i), ' already appeared'
+              write(*,*) 'ERROR', partition(i), ' already appeared', a_n
           ELSE
              flags(partition(i)) = 0
            END IF
@@ -8669,6 +9259,7 @@ INNER:    DO inn = 1, n
         INTEGER :: work_part
         ! Set work(work_part+1:work_part+a_n) to hold flags to indicate what 
         ! part of the partition the nodes are in
+
         work_part = 0
         DO i = 1, a_n1
             j = partition(i)
@@ -8809,6 +9400,7 @@ INNER:    DO inn = 1, n
         head = 0
         tail = 0
         work(work_next+1:work_next+a_n) = 0
+        work(work_mask+1:work_mask+a_n) = 0
         s=0
         DO i = a_n1+a_n2+1, a_n
            j = partition(i)
@@ -8820,9 +9412,10 @@ INNER:    DO inn = 1, n
            DO k = a_ptr(j),t
               l = a_row(k)
               IF ((work(work_part+l).NE.mc70_sep_flag) .AND. &
-                  (work(work_next+l).EQ.0)) THEN
+                  (work(work_mask+l).EQ.0)) THEN
                   ! Add l to list
                   s=s+1
+                  work(work_mask+l) = 1
                   IF (tail.EQ.0) THEN
                      head = l
                      tail = l
@@ -8835,7 +9428,6 @@ INNER:    DO inn = 1, n
         END DO
         work(work_nextb+1:work_nextb+a_n) = 0
         work(work_dist+1:work_dist+a_n) = -1
-        work(work_mask+1:work_mask+a_n) = 0
         DO WHILE (head.NE.0)
           i = head
           IF ((work(work_part+i).EQ.mc70_part1_flag) .AND. a_n1.EQ.1) THEN
@@ -8951,8 +9543,7 @@ INNER:    DO inn = 1, n
              END IF           
           END IF    
           IF (move) THEN
-            k = work(work_part+i)
-            work(work_part+i) = (k - 1)**2
+            work(work_part+i) = mc70_sep_flag
             j = i
             IF (j.EQ. a_n) THEN
               t = a_ne
@@ -8962,9 +9553,10 @@ INNER:    DO inn = 1, n
             DO k = a_ptr(j),t
               l = a_row(k)
               IF ((work(work_part+l).NE.mc70_sep_flag) .AND. &
-                  (work(work_next+l).EQ.0).AND. work(work_mask+l).EQ.0) THEN
+                       work(work_mask+l).EQ.0) THEN
                   ! Add l to list (note: list is non-empty)
                   work(work_next+tail) = l
+                  work(work_mask+l) = 1
                   tail = l
               END IF
             END DO
@@ -8972,7 +9564,6 @@ INNER:    DO inn = 1, n
 
           ! remove i from list
 100       head = work(work_next+i)
-          work(work_mask+i) = 1
           work(work_next+i) = 0
           IF (head.EQ.0) THEN
             tail = 0
@@ -8980,11 +9571,9 @@ INNER:    DO inn = 1, n
           work(work_dist+i) = -1
         END DO
 
-
         j =1
-        k = j + a_n1
-        l = k + a_n2 
-        t=0
+        k = 1 + a_n1
+        l = 1 + a_n1 + a_n2 
         DO i=1,a_n
           jj = work(work_part+i)
           IF (jj .EQ. mc70_part1_flag) THEN
@@ -8996,9 +9585,9 @@ INNER:    DO inn = 1, n
           ELSE
              partition(l) =i
              l = l+1
-             t = t + a_weight(i)
           END IF
         END DO
+        
         
       END SUBROUTINE expand_partition_kinks
 
