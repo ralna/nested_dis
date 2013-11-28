@@ -1836,9 +1836,9 @@ MODULE hsl_mc70_double
          !   write(*,*) 'expand2',a_n,a_n1,a_n2
           ! write(*,*) 'zzz',a_weight_1_new,a_weight_2_new,&
           !     a_weight_sep_new
-
+          
             CALL expand_partition_kinks(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
-               3,10.0_myreal_mc70,1.0_myreal_mc70,a_n1_new,a_n2_new,&
+               3,3.0_myreal_mc70,1.0_myreal_mc70,a_n1_new,a_n2_new,&
                 a_weight_1_new,a_weight_2_new,&
                a_weight_sep_new,work(part_ptr+1:part_ptr+a_n),&
                work(work_ptr+1:work_ptr+5*a_n),control)
