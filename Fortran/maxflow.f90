@@ -3,22 +3,8 @@ module hsl_maxflow
 !  use hsl_mc70_double
 implicit none
 
-type bandgraph
-!    graph object of wide separator and its edges
-  integer ::  nvtx  ! number of vertices
-  integer ::  nedge ! number of edges
-  integer, allocatable :: edges(:,:)  ! edge array
-  integer, allocatable :: isAdjToSource(:)
-!       isAdjToSource(u,1)  = 1 --> u is adjacent to the source
-!       isAdjToSource(u,1) /= 1 --> u is NOT adjacent to the source
-  integer, allocatable :: isAdjToSink(:)
-!       isAdjToSink(u,1)  = 1 --> u is adjacent to the sink
-!       isAdjToSink(u,1) /= 1 --> u is NOT adjacent to the sink
-  integer, allocatable ::  vwts(:) ! vertex weights of non-source and
-                                   !                   non-sink vertices
-  integer ::  vwtB  ! Sum of weights of vertices in B  (source)
-  integer ::  vwtW  ! Sum of weights of vertices in W  (sink)
-end type bandgraph
+! This is a version of maxglow with no bandgraph and assumption that there
+! are no duplicated edges.
 
 type network
   integer ::  nnode ! number of nodes in the network
@@ -96,165 +82,56 @@ real(wp), intent(out) :: cost
 
 !       TYPE(mc70_control), intent(in) :: control
 
-type(bandgraph) :: bandg
+type(network) :: netw
 
-integer, allocatable :: map(:),mapL(:),mapR(:),graph_S_S(:,:)
+integer, allocatable :: map(:),mapL(:),mapR(:)
 integer, allocatable :: dmapL(:), dmapR(:)
-integer, allocatable :: sep_map(:)
-integer :: a_ns, n_S, n_S_S, i, istart_s, j, j1, j2, jj, k, lp, &
-                   nedge, statsR(9), statsL(9)
+integer, allocatable :: vwts(:)
+integer :: a_ns, i, istart_s, j, j1, j2, k, lp, &
+                   vwtW, vwtB, statsR(9), statsL(9)
 integer i1,i2,i0           
 !       integer, parameter :: wp = kind(0.0d0)
 real(wp) :: costR, costL
 
 lp = 6
 
-! Define bandgraph for maxflow solver
-
-! Matlab code for first part
-!%
-!% form the wide separator graph for the max flow solver
-!%
-!   Swide = find(mapWide == 0) ; S = Swide ; n_S = length(S) ; 
-!   Bwide = find(mapWide == 1) ; B = Bwide ; n_B = length(B) ; 
-!   Wwide = find(mapWide == 2) ; W = Wwide ; n_W = length(W) ; 
-!
-!   A_S_S = A(S,S) ; A_S_B = A(S,B) ; A_S_W = A(S,W) ;
-!   [rows_S_S, cols_S_S, ents_S_S] = find(A(S,S)) ;
-!   n_S_S = length(rows_S_S) ;
-!   counts = spones(A_S_B)*ones(n_B,1) ;
-!   idx = find(counts > 0) ;
-!   isAdjToSource = zeros(n_S,1) ;
-!   isAdjToSource(idx) = 1 ;
-!   counts = spones(A_S_W)*ones(n_W,1) ;
-!   idx = find(counts > 0) ;
-!   isAdjToSink = zeros(n_S,1) ;
-!   isAdjToSink(idx) = 1 ;
-!   graph_S_S.nvtx = n_S ;
-!   graph_S_S.nedge = n_S_S ;
-!   graph_S_S.edges = [rows_S_S cols_S_S] ;
-!   graph_S_S.isAdjToSource = isAdjToSource ;
-!   graph_S_S.isAdjToSink = isAdjToSink ;
 !
 ! Number vertices in separator
 a_ns = a_n - a_n1 - a_n2
-n_s  = a_ns
 
 ! Set up map array to define in what partition each vertex lies
-! At same time set weights for bandgraph
-allocate (map(a_n),bandg%vwts(n_s))
-bandg%vwtB = 0
+! At same time set weights for partition (can check with Sue's input)
+allocate (map(a_n),vwts(a_ns))
+vwtB = 0
 do i = 1,a_n1
   k = partition(i)
   map(k) = 1
-  bandg%vwtB = bandg%vwtB + a_weight(k)
+  vwtB = vwtB + a_weight(k)
 enddo
-bandg%vwtW = 0
+vwtW = 0
 do i = a_n1+1,a_n1+a_n2
   k = partition(i)
   map(k) = 2
-  bandg%vwtW = bandg%vwtW + a_weight(k)
+  vwtW = vwtW + a_weight(k)
 enddo
 do i = a_n1+a_n2+1,a_n
   k = partition(i)
   map(k) = 0
-  bandg%vwts(i-a_n1-a_n2) = a_weight(k)
+  vwts(i-a_n1-a_n2) = a_weight(k)
 enddo
-
-!write(8,*) map(1:a_n)
 
 ! Source is associated with partition B (size a_n1)
 ! Sink is associated with partition W   (size a_n2)
-
-! Set number of vertices in bandgraph (separator)
-bandg%nvtx = a_ns
-
-! Allocate and determind mapping of global variables of matrix to separator set
-allocate(sep_map(a_n))
-do k = 1,bandg%nvtx
-  i = partition(a_n1+a_n2+k)
-  sep_map(i) = k
-enddo
-
-! Allocate maximum space for bandgraph edges
-!n_S_S = min(a_ns*a_ns,a_ne)  ! HST: a_ns*a_ns can cause integer overflow
-n_S_S=0
-do k= 1,bandg%nvtx
-  i = partition(a_n1+a_n2+k)
-  j1 = a_ptr(i)
-  if (i == a_n) then 
-    n_S_S = n_S_S + a_ne +1 - a_ptr(i) 
-  else 
-    n_S_S = n_S_S + a_ptr(i+1)- a_ptr(i)
-  endif
-end do
-allocate(graph_S_S(n_S_S,2))
-
-! Allocate arrays for bandgraph
-allocate(bandg%isAdjToSource(a_ns),bandg%isAdjToSink(a_ns))
-! Initialize arrays to say no vertex is in them
-bandg%isAdjToSource = 0
-bandg%isAdjToSink   = 0
-nedge = 0
-
-! Run through nodes in separator S and generate bandgraph
-do k = 1,bandg%nvtx
-  i = partition(a_n1+a_n2+k)
-  j1 = a_ptr(i)
-  if (i == a_n) then 
-    j2 = a_ne  
-  else 
-    j2 = a_ptr(i+1)-1
-  endif
-! Run through vertices connected to vertex i seeing what partition they are in
-  do jj = j1,j2
-    j = a_row(jj)
-! Find out in which partition node j lies using map array
-    if (map(j) == 1) then
-! If in partition B add vertex k to AdjToSource
-       bandg%isAdjToSource(k) = 1
-    endif
-    if (map(j) == 2) then
-! If in partition W add vertex k to AdjToSink
-       bandg%isAdjToSink(k) = 1
-    endif
-    if (map(j) == 0) then
-! If in separator add edge to bandg%edges accumulating number of edges
-      nedge = nedge + 1
-! To emulate matlab code      
-      graph_S_S(nedge,2) = sep_map(i)
-      graph_S_S(nedge,1) = sep_map(j)
-    endif
-  enddo
-enddo
-deallocate(sep_map)
-bandg%nedge = nedge
-allocate(bandg%edges(nedge,2))
-bandg%edges(:,1) = graph_S_S(1:nedge,1)
-bandg%edges(:,2) = graph_S_S(1:nedge,2)
-
-deallocate(graph_S_S)
-
-if (msglvl > 2) then
-  write(lp,*) 'Bandgraph'
-  write(lp,'(A,I4)') 'Number of vertices',bandg%nvtx
-  write(lp,'(A,I4)') 'Number of edges   ',bandg%nedge
-  write(lp,*) 'Edges'
-  write(lp,'(10I4)') (bandg%edges(i,1),bandg%edges(i,2),i=1,bandg%nedge)
-  write(lp,*) 'isAdjToSource'
-  write(lp,'(10I4)') (bandg%isAdjToSource(i),i=1,bandg%nvtx)
-  write(lp,*) 'isAdjToSink'
-  write(lp,'(10I4)') (bandg%isAdjToSink(i),i=1,bandg%nvtx)
-endif
 
 ! solve a max flow problem to find the two new maps
 !
 ! [dmapL, dmapR] = solvemaxflow(graph_S_S, msglvl) ;
 ! dmapL and dmapR are allocated within solvemaxflow
 
-call solvemaxflow(bandg,msglvl,dmapL,dmapR)
+call mk_network(a_n,a_ne,a_ptr,a_row,partition,map,a_ns,msglvl,netw,vwts)
 
-deallocate(bandg%isAdjToSource,bandg%isAdjToSink,bandg%edges)
+call solvemaxflow(netw,a_ns,msglvl,dmapL,dmapR)
+
 
 if (msglvl > 2) then
   write(lp,*) 'dmapL ...'
@@ -268,7 +145,7 @@ allocate (mapL(a_n),mapR(a_n))
 mapL = map
 mapR = map
 istart_s = a_n1+a_n2
-do i = 1,n_s
+do i = 1,a_ns
   mapL(partition(istart_S +i)) = dmapL(i)
   mapR(partition(istart_S +i)) = dmapR(i)
 enddo
@@ -284,8 +161,8 @@ endif
 
 ! Use evaluation function to choose best partition from among these two
 ! Pass all of matrix A
-call evalBSW(a_n,a_ne, a_ptr,a_row, a_weight, mapL, alpha, beta, statsL, costL)
-call evalBSW(a_n,a_ne, a_ptr,a_row, a_weight, mapR, alpha, beta, statsR, costR)
+call evalBSW(a_n,a_ne,a_ptr,a_row, a_weight, mapL, alpha, beta, statsL, costL)
+call evalBSW(a_n,a_ne,a_ptr,a_row, a_weight, mapR, alpha, beta, statsR, costR)
 !  statsL = evalBSW(A, mapL, params(1), params(2), msglvl) ;
 !  statsR = evalBSW(A, mapR, params(1), params(2), msglvl) ;
 if (msglvl > 0) then
@@ -415,13 +292,13 @@ enddo
 deallocate(map)
 
 contains
-include 'solvemaxflow.f90'
-include 'make_network.f90'
-include 'evalBSW.f90'
-include 'findaugpath.f90'
-include 'augmentpath.f90'
-include 'findmaxflow.f90'
-include 'findmincut.f90'
+include '/numerical/hsd/hsl_dir/nested_dis/Fortran/new_solvemaxflow.f90'
+include '/numerical/hsd/hsl_dir/nested_dis/Fortran/make_new_network.f90'
+include '/numerical/hsd/hsl_dir/nested_dis/Fortran/evalBSW.f90'
+include '/numerical/hsd/hsl_dir/nested_dis/Fortran/findaugpath.f90'
+include '/numerical/hsd/hsl_dir/nested_dis/Fortran/augmentpath.f90'
+include '/numerical/hsd/hsl_dir/nested_dis/Fortran/findmaxflow.f90'
+include '/numerical/hsd/hsl_dir/nested_dis/Fortran/findmincut.f90'
 
 end subroutine mc70_maxflow
 

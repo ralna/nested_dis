@@ -1,4 +1,4 @@
-subroutine solvemaxflow(bandg,msglvl,maps1,maps2)
+subroutine solvemaxflow(netw,nvtx,msglvl,maps1,maps2)
 ! SOLVEMAXFLOW -- find two partitions of a wide separator graph
 !                 by solving a max flow problem
 
@@ -8,19 +8,7 @@ subroutine solvemaxflow(bandg,msglvl,maps1,maps2)
 
 ! input --
 !
-!    bandgraph -- graph object of wide separator and its edges
-!    bandgraph has the following fields
-!      nvtx -- # of vertices
-!      nedge -- # of edges
-!      edges(nedge,2) -- edge array
-!      isAdjToSource(nvtx,1) -- 
-!         isAdjToSource(u,1)  = 1 --> u is adjacent to the source
-!         isAdjToSource(u,1) ~= 1 --> u is NOT adjacent to the source
-!      isAdjToSink(nvtx,1) -- 
-!         isAdjToSink(u,1)  = 1 --> u is adjacent to the sink
-!         isAdjToSink(u,1) ~= 1 --> u is NOT adjacent to the sink
-!      vwts(nvtx,1) -- vertex weights (optional),
-!                      if not present, then unit vertex weights assumed
+!    network graph
 
 !
 ! output --
@@ -31,11 +19,10 @@ subroutine solvemaxflow(bandg,msglvl,maps1,maps2)
 
 
 implicit none
-type(bandgraph), intent(in) :: bandg
-integer, intent(in) :: msglvl
+type(network), intent(inout) :: netw
+integer, intent(in) :: msglvl,nvtx
 integer, allocatable, intent(out) :: mapS1(:),mapS2(:)
 
-type(network) :: netw
 integer iarc,ii,lp,narc,nnode,u,i
 integer, allocatable :: mark1(:),mark2(:)
 
@@ -44,29 +31,6 @@ lp = 6
 !
 ! initialize the network from the graph
 !
-
-!ISD Strange to set this here and makes next print impossible to execute
-!msglvl = 1 ;
-if (msglvl > 0) then
-  write(lp,'(A)')  ''
-  write(lp,'(A)')  '### inside solvemaxflow()'
-endif
-
-if (msglvl > 3) then
-  write(lp,*) 'Bandgraph'
-  write(lp,'(A,I4)') 'Nodes',bandg%nvtx
-  write(lp,'(A,I4)') 'Edges',bandg%nedge
-  write(lp,*) 'Edges'
-  write(lp,'(10I4)') (bandg%edges(i,2),i=1,bandg%nedge)
-  write(lp,*) 'isAdjToSource'
-  write(lp,'(10I4)') (bandg%isAdjToSource(i),i=1,bandg%nvtx)
-  write(lp,*) 'isAdjToSink'
-  write(lp,'(10I4)') (bandg%isAdjToSink(i),i=1,bandg%nvtx)
-endif
-
-! Set up network graph
-!network = mknetwork(bandg, msglvl) ;
-call make_network(bandg,msglvl,netw)
 
 nnode = netw%nnode
 narc = netw%narc
@@ -124,7 +88,7 @@ endif
 ! load the maps
 !
 
-allocate (mapS1(bandg%nvtx),mapS2(bandg%nvtx))
+allocate (mapS1(nvtx),mapS2(nvtx))
 mapS1 = -1
 mapS2 = -1
 
@@ -181,7 +145,6 @@ do ii = 2,nnode-1,2
 enddo
 if (msglvl > 0) then
    write(lp,'(A)')  '### leaving solvemaxflow()'
-   write(lp,*) netw%flows(:)
    write(lp,'(A)')  ''
 endif
 
