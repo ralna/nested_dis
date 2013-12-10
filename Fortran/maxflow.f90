@@ -3,7 +3,7 @@ module hsl_maxflow
 !  use hsl_mc70_double
 implicit none
 
-! This is a version of maxglow with no bandgraph and assumption that there
+! This is a version of maxflow with no bandgraph and assumption that there
 ! are no duplicated edges.
 
 type network
@@ -98,39 +98,43 @@ integer, allocatable :: dmapL(:), dmapR(:)
 integer, allocatable :: vwts(:)
 integer, allocatable :: sedge(:,:)
 integer, allocatable :: mark1(:),mark2(:),pred(:),list(:)
+real(wp), allocatable :: imb(:)
 
 ! Local variables
 integer :: a_ns, i, istart_s, j, j1, j2, k, lp, &
-                   vwtW, vwtB, statsR(9), statsL(9)
+                   wtW, wtB, statsR(9), statsL(9)
 integer i1,i2,i0,nedge
 real(wp) :: costR, costL
 
 lp = 6
 
+!write(9,*) 'Entering maxflow'
+!write(0,*) 'Entering maxflow'
 allocate (map(a_n),mapL(a_n),mapR(a_n))
 
 !
 ! Number vertices in separator
 a_ns = a_n - a_n1 - a_n2
 
-allocate (dmapL(a_ns),dmapR(a_ns),vwts(a_ns))
+allocate (dmapL(2*a_ns),dmapR(a_ns),vwts(a_ns))
 
 ! Allocate network work arrays.  Length is upper bound
 allocate (mark1(2*a_ns+2),mark2(2*a_ns+2),pred(2*a_ns+2),list(2*a_ns+2))
+allocate (imb(2*a_ns))
 
 ! Set up map array to define in what partition each vertex lies
 ! At same time set weights for partition (can check with Sue's input)
-vwtB = 0
+wtB = 0
 do i = 1,a_n1
   k = partition(i)
   map(k) = 1
-  vwtB = vwtB + a_weight(k)
+  wtB = wtB + a_weight(k)
 enddo
-vwtW = 0
+wtW = 0
 do i = a_n1+1,a_n1+a_n2
   k = partition(i)
   map(k) = 2
-  vwtW = vwtW + a_weight(k)
+  wtW = wtW + a_weight(k)
 enddo
 do i = a_n1+a_n2+1,a_n
   k = partition(i)
@@ -159,14 +163,25 @@ allocate(sedge(nedge,2))
 ! Work array  mapL used to hold sep_map
 ! Source is associated with partition B (size a_n1)
 ! Sink is associated with partition W   (size a_n2)
+!write(9,*) 'Calling mk_network'
+!write(0,*) 'Calling mk_network'
 call mk_network(a_n,a_ne,a_ptr,a_row,partition,map,a_ns,msglvl,netw,vwts, &
-                sedge,mapL,dmapL,dmapR)
+                wtB,wtW,sedge,mapL,dmapL,dmapR,pred,list,mark1,mark2,imb)
+!write(9,*) 'Leaving mk_network'
+!write(0,*) 'Leaving mk_network'
 
 !
 ! solve a max flow problem to find the two new maps dmapL and dmapR
 !
 call solvemaxflow(netw,a_ns,msglvl,dmapL,dmapR,mark1,mark2,pred,list)
 
+
+if (msglvl > 2) then
+  write(lp,*) 'dmapL ...'
+  write(lp,'(10I4)') dmapL
+  write(lp,*) 'dmapR ...'
+  write(lp,'(10I4)') dmapR
+endif
 
 mapL = map
 mapR = map
@@ -176,42 +191,89 @@ do i = 1,a_ns
   mapR(partition(istart_S +i)) = dmapR(i)
 enddo
 
+if (msglvl > 2) then
+  write(lp,*) 'mapL ...'
+  write(lp,'(10I4)') mapL
+  write(lp,*) 'mapR ...'
+  write(lp,'(10I4)') mapR
+endif
+
 ! Use evaluation function to choose best partition from among these two
 ! Use Sue's weighted code
-call evalBSW(a_n,a_ne,a_ptr,a_row,a_weight, mapL, alpha, beta, statsL, costL)
-call evalBSW(a_n,a_ne,a_ptr,a_row,a_weight, mapR, alpha, beta, statsR, costR)
+call evalBSW(a_n,a_ne,a_ptr,a_row, a_weight, mapL, alpha, beta, statsL, costL)
+call evalBSW(a_n,a_ne,a_ptr,a_row, a_weight, mapR, alpha, beta, statsR, costR)
+
+if (msglvl > 0) then
+  write(lp,'(A)') 'After evaluation of two partitions'
+  write(lp,'(A)') 'left partition'
+  if (statsL(9) == 1) then
+    write(lp,'(A)') 'acceptable'
+  else
+    write(lp,'(A)') 'NOT acceptable'
+  endif
+  write(lp,'(A,G10.2)') 'cost', costL
+  write(lp,'(A,I8,A,3I8,A)') '|S|', statsL(1), 'edges = [', &
+            statsL(4), statsL(5), statsL(6),']'
+  write(lp,'(A,I8,A,3I8,A)') '|B|', statsL(2), 'edges = [', &
+            statsL(5), statsL(7), 0, ']'
+  write(lp,'(A,I8,A,3I8,A)') '|W|', statsL(3), 'edges = [', &
+            statsL(6), 0, statsL(8), ']'
+   write(lp,'(A)') 'right partition'
+   if (statsR(9) == 1) then
+     write(lp,'(A)') 'acceptable'
+   else
+     write(lp,'(A)') 'NOT acceptable'
+   endif
+   write(lp,'(A,G10.2)') 'cost', costR
+   write(lp,'(A,I8,A,3I8,A)') '|S|', statsR(1), 'edges = [', &
+            statsR(4), statsR(5), statsR(6),']'
+   write(lp,'(A,I8,A,3I8,A)') '|B|', statsR(2), 'edges = [', &
+            statsR(5), statsR(7), 0, ']'
+   write(lp,'(A,I8,A,3I8,A)') '|W|', statsR(3), 'edges = [', &
+            statsR(6), 0, statsR(8), ']'
+  endif
 
 !
 ! Find the better of the two partitions
 !
 
 if (statsL(9) == 1 .AND. statsR(9) == 1) then
+  if (msglvl > 0) write(lp,'(A)') 'both maps are acceptable'
   if (costL <= costR) then
     map = mapL
     stats = statsL(1:8)
     cost  = costL
+    if (msglvl > 0) write(lp,'(A)') 'left map accepted'
   else
     map = mapR
     stats = statsR(1:8)
     cost  = costR
+    if (msglvl > 0) write(lp,'(A)') 'right map accepted'
   endif
 elseif (statsL(9) == 1) then
   map = mapL
   stats = statsL(1:8)
   cost  = costL
+  if (msglvl > 0)  &
+          write(lp,'(A)') 'right map NOT acceptable, left map accepted'
 elseif (statsR(9) == 1) then
   map = mapR
   stats = statsR(1:8)
   cost  = costR
+  if (msglvl > 0) &
+       write(lp,'(A)') 'left map NOT acceptable, right map accepted'
 else 
+  if (msglvl > 0) write(lp,'(A)') 'NEITHER map acceptable'
   if (costL <= costR) then
     map = mapL
     stats = statsL(1:8)
     cost  = costL
+    if (msglvl > 0) write(lp,'(A)') 'left map accepted'
   else
     map = mapR
     stats = statsR(1:8)
     cost  = costR
+    if (msglvl > 0) write(lp,'(A)') 'right map accepted'
   endif
 endif
 
@@ -256,6 +318,7 @@ deallocate (sedge)
 
 contains
 include 'solvemaxflow.f90'
+include 'findpenalty.f90'
 include 'make_network.f90'
 include 'evalBSW.f90'
 include 'findaugpath.f90'
