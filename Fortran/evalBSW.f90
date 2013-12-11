@@ -39,7 +39,7 @@ integer minBW,maxBW,nSS,nSb,nSW,nBB,nWW,nvtx,nS,nB,nW
 integer j,j1,j2,jj,u,v
 real(wp) diffBW
 nvtx = a_n
-stats = 0
+stats(1:9) = -1
 nS = 0
 nB = 0
 nW = 0
@@ -58,6 +58,7 @@ stats(3) = nW
 minBW = min(nB,nW)
 maxBW = max(nB,nW)
 diffBW = real(abs(nB - nW))/real(nS + nB + nW)
+if (.false.) then
 nSS = 0
 nSB = 0
 nSW = 0
@@ -100,6 +101,7 @@ stats(5) = nSB
 stats(6) = nSW
 stats(7) = nBB
 stats(8) = nWW
+end if
 !    stats[9] -- 1 if acceptable, 0 if not
 !       acceptable --> alpha*min(|B|,|W|) >= max(|B|,|W|) 
 !    stats[10] -- cost of partition

@@ -276,7 +276,9 @@ else
     if (msglvl > 0) write(lp,'(A)') 'right map accepted'
   endif
 endif
-
+a_weight_1 = stats(2)
+a_weight_2 = stats(3)
+a_weight_sep = stats(1)
 
 ! Now update partition
 ! First count number of vertices in each part

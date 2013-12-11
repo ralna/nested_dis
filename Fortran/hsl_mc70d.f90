@@ -1745,7 +1745,12 @@ MODULE hsl_mc70_double
               END IF
            ELSE
               IF (control%refinement .LT. 0) THEN
+                IF (min(a_weight_1,a_weight_2) + a_weight_sep .LT. &
+                   max(a_weight_1,a_weight_2)) THEN
+                 ref_method = 2
+                ELSE
                  ref_method = 0
+                END IF
               ELSE 
                IF (control%refinement .EQ. 0) THEN
                  ref_method = 1
@@ -1799,12 +1804,6 @@ MODULE hsl_mc70_double
 
             END IF
            END IF
-          ! Refine the partition
-         !   write(*,*) '******************'
-         !  write(*,*) 'output',a_n1,a_n2,a_n-a_n1-a_n2,a_weight_1,&
-         !       a_weight_2,a_weight_sep, &
-         !       (real(a_weight_sep)/real(a_weight_1))/real(a_weight_2),&
-         !       real(a_weight_sep)*(1.0+0.3*abs(real(a_weight_1-a_weight_2))/real(sumweight))
            IF (control%expand.GT.0) THEN
                ratio = control%ratio
                IF (ratio .GT. real(sumweight-2)) THEN
@@ -1828,22 +1827,50 @@ MODULE hsl_mc70_double
             part_ptr = work_ptr+8*a_n+sumweight+a_ne/2+1
             work(part_ptr+1:part_ptr+a_n) = work(partition_ptr+1:partition_ptr+a_n)
            DO i=1,k
-         !   write(*,*) 'expand1',a_n,a_n1,a_n2
-         !   CALL expand_partition_simple(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
-         !      a_n1_new,a_n2_new,a_weight_1_new,a_weight_2_new,&
-         !      a_weight_sep_new,work(part_ptr+1:part_ptr+a_n),&
-         !      work(work_ptr+1:work_ptr+a_n),control)
-         !   write(*,*) 'expand2',a_n,a_n1,a_n2
-          ! write(*,*) 'zzz',a_weight_1_new,a_weight_2_new,&
-          !     a_weight_sep_new
           
-            CALL expand_partition_kinks(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
-               1,3.0_myreal_mc70,1.0_myreal_mc70,a_n1_new,a_n2_new,&
-                a_weight_1_new,a_weight_2_new,&
+            IF (control%ratio .LT. real(sumweight-2)) THEN
+             IF (real(max(a_weight_1,a_weight_2))/real(min(a_weight_1,a_weight_2)) .LT. control%ratio) THEN 
+              CALL expand_partition_kinks(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
+               1,2.0_myreal_mc70,1.0_myreal_mc70,a_n1_new,a_n2_new,&
+               a_weight_1_new,a_weight_2_new,&
                a_weight_sep_new,work(part_ptr+1:part_ptr+a_n),&
                work(work_ptr+1:work_ptr+5*a_n),control)
 
+             ELSE
+              CALL expand_partition(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
+               a_n1_new,a_n2_new,&
+               a_weight_1_new,a_weight_2_new,&
+               a_weight_sep_new,work(part_ptr+1:part_ptr+a_n),&
+               work(work_ptr+1:work_ptr+5*a_n),control)
+
+             END IF
+
+            ELSE
+              CALL expand_partition_kinks(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
+               1,3.0_myreal_mc70,1.0_myreal_mc70,a_n1_new,a_n2_new,&
+               a_weight_1_new,a_weight_2_new,&
+               a_weight_sep_new,work(part_ptr+1:part_ptr+a_n),&
+               work(work_ptr+1:work_ptr+5*a_n),control)
+            END IF
+
           ! call check_partition1(a_n,a_ne,a_ptr,a_row,a_n1_new,a_n2_new,work(part_ptr+1:part_ptr+a_n))
+
+           IF (control%refinement .GE. 2) THEN
+              IF (min(a_weight_1,a_weight_2) + a_weight_sep .LT. &
+               max(a_weight_1,a_weight_2)) THEN
+                 ref_method = 2
+              ELSE
+                 ref_method = 1
+              END IF
+           END IF
+           IF (control%refinement .LT. 0) THEN
+                IF (min(a_weight_1,a_weight_2) + a_weight_sep .LT. &
+                   max(a_weight_1,a_weight_2)) THEN
+                 ref_method = 2
+                ELSE
+                 ref_method = 0
+                END IF
+           END IF
            
            IF (ref_method .EQ. 0) THEN
 
@@ -1905,6 +1932,8 @@ MODULE hsl_mc70_double
                a_weight_1 = a_weight_1_new
                a_weight_2 = a_weight_2_new
                a_weight_sep = a_weight_sep_new
+            ELSE
+               exit
             END IF
            END DO
 
@@ -1913,9 +1942,6 @@ MODULE hsl_mc70_double
         ELSE
           GOTO 10
         END IF
-     !   write(*,*) a_weight_1,a_weight_2,a_weight_sep
-     !  END DO
-     !  END DO
 
         IF ((a_n1 .le. max(2,control%nd_switch) .and. &
             a_n2 .le. max(2,control%nd_switch))) THEN
@@ -9156,7 +9182,7 @@ INNER:    DO inn = 1, n
 
         ! Local variables
         INTEGER :: i,j,k,l,m,w,side
-        INTEGER :: work_part
+        INTEGER :: work_part, a_weight_sep_orig
         ! Set work(work_part+1:work_part+a_n) to hold flags to indicate what 
         ! part of the partition the nodes are in
         work_part = 0
@@ -9173,13 +9199,14 @@ INNER:    DO inn = 1, n
             work(work_part+j) = mc70_sep_flag
         END DO
 
-        IF (a_n1 .LT. a_n2) THEN
+        IF (a_weight_1 .LT. a_weight_2) THEN
           side = mc70_part2_flag
-        ELSE IF (a_n1 .GT. a_n2) THEN
+        ELSE IF (a_weight_1 .GT. a_weight_2) THEN
           side = mc70_part1_flag
         ELSE
           side = mc70_sep_flag
         END IF
+        a_weight_sep_orig = a_weight_sep
 
         DO i = a_n1+a_n2+1, a_n
             j = partition(i)
@@ -9187,7 +9214,7 @@ INNER:    DO inn = 1, n
             IF (j.EQ.a_n) THEN
                k = a_ne
             ELSE
-               k = a_ptr(j+1)-j
+               k = a_ptr(j+1)-1
             END IF
             DO l=a_ptr(j),k
                m = a_row(l)
@@ -9227,116 +9254,16 @@ INNER:    DO inn = 1, n
              l = l+1
           END SELECT
         END DO
+        write(*,*) 'ratio sep', real(a_weight_sep)/real(a_weight_sep_orig),&
+                   (a_weight_sep),(a_weight_sep_orig), a_weight_1, a_weight_2
         
       END SUBROUTINE expand_partition
 
-      SUBROUTINE expand_partition_simple(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,&
-               a_n2,a_weight_1,a_weight_2,a_weight_sep,partition,work,control)
-        INTEGER, INTENT(IN) :: a_n ! order of matrix
-        INTEGER, INTENT(IN) :: a_ne ! number of entries in matrix
-        INTEGER, INTENT(IN) :: a_ptr(a_n) ! On input a_ptr(i) contains 
-             ! position in a_row that entries for column i start. 
-        INTEGER, INTENT(IN) :: a_row(a_ne) ! On input a_row contains row 
-             ! indices of the non-zero rows. Diagonal entries have been removed
-             ! and the matrix expanded.
-        INTEGER, INTENT(IN) :: a_weight(a_n) ! On input a_weight(i) contains 
-             ! the weight of column i 
-        INTEGER, INTENT(IN) :: sumweight ! Sum of weights in a_weight
-        INTEGER, INTENT(INOUT) :: a_n1 ! Size of partition 1
-        INTEGER, INTENT(INOUT) :: a_n2 ! Size of partition 2
-        INTEGER, INTENT(INOUT) :: a_weight_1,a_weight_2,a_weight_sep ! Weighted 
-             ! size of partitions and separator
-        INTEGER, INTENT(INOUT) :: partition(a_n) !First a_n1 entries contain
-             ! list of (local) indices in partition 1; next a_n2 entries  
-             ! contain list of (local) entries in partition 2; entries in 
-             ! separator are listed at the end. This is updated to the new 
-             ! partition
-        INTEGER, INTENT(OUT) :: work(a_n) ! Work array
-        TYPE(mc70_control), INTENT(IN) :: control
-
-        ! Local variables
-        INTEGER :: i,j,k,l,m,w,side,t,s
-        INTEGER :: work_part
-        ! Set work(work_part+1:work_part+a_n) to hold flags to indicate what 
-        ! part of the partition the nodes are in
-
-        work_part = 0
-        DO i = 1, a_n1
-            j = partition(i)
-            work(work_part+j) = mc70_part1_flag
-        END DO
-        DO i = a_n1+1, a_n1+a_n2
-            j = partition(i)
-            work(work_part+j) = mc70_part2_flag
-        END DO
-        DO i = a_n1+a_n2+1, a_n
-            j = partition(i)
-            work(work_part+j) = mc70_sep_flag
-        END DO
-
-    !    s = 0
-        DO i = a_n1+a_n2+1, a_n
-           j = partition(i)
-           IF (j.EQ. a_n) THEN
-              t = a_ne
-           ELSE
-              t = a_ptr(j+1)-1
-           END IF
-           DO k = a_ptr(j),t
-              l = a_row(k)
-              IF ((work(work_part+l).NE.mc70_sep_flag) ) THEN
-               work(work_part+l) = mc70_sep_flag
-                  ! Add l to list
-           !       s=s+a_weight(l)
-              END IF
-           END DO
-        END DO
-        
-        ! Update a_n1, a_n2, a_weight1, a_weight_2,a_weight_sep
-        a_n1 = 0
-        a_n2 = 0
-        a_weight_1 = 0
-        a_weight_2 = 0
-        a_weight_sep = 0
-
-        DO i = 1,a_n
-          j = work(work_part+i)
-          SELECT CASE (j)
-          CASE (mc70_part1_flag)
-            a_n1 = a_n1 + 1
-            a_weight_1 = a_weight_1 + a_weight(i)
-          CASE (mc70_part2_flag)
-            a_n2 = a_n2 + 1
-            a_weight_2 = a_weight_2 + a_weight(i)
-          CASE (mc70_sep_flag)
-            a_weight_sep = a_weight_sep + a_weight(i)
-          END SELECT
-
-        END DO
-
-        j =1
-        k = j + a_n1
-        l = k + a_n2
-        DO i=1,a_n
-          m = work(work_part+i)
-          SELECT CASE (m)
-          CASE (mc70_part1_flag)
-             partition(j) =i
-             j = j+1
-          CASE (mc70_part2_flag) 
-             partition(k) =i
-             k = k+1
-          CASE default
-             partition(l) =i
-             l = l+1
-          END SELECT
-        END DO
-        
-      END SUBROUTINE expand_partition_simple
 
       SUBROUTINE expand_partition_kinks(a_n,a_ne,a_ptr,a_row,a_weight,&
                sumweight,radius,upper,ratio,a_n1,&
                a_n2,a_weight_1,a_weight_2,a_weight_sep,partition,work,control)
+
         INTEGER, INTENT(IN) :: a_n ! order of matrix
         INTEGER, INTENT(IN) :: a_ne ! number of entries in matrix
         INTEGER, INTENT(IN) :: a_ptr(a_n) ! On input a_ptr(i) contains 
@@ -9589,220 +9516,13 @@ INNER:    DO inn = 1, n
           END IF
         END DO
         
+        write(*,*) 'ratio sep kink', real(a_weight_sep)/real(w_sep_orig),&
+                   (a_weight_sep),(w_sep_orig), a_weight_1, a_weight_2
+        
         
       END SUBROUTINE expand_partition_kinks
 
-      SUBROUTINE expand_partition_kinks_simple(a_n,a_ne,a_ptr,a_row,a_weight,&
-               sumweight,radius,upper,ratio,a_n1,&
-               a_n2,a_weight_1,a_weight_2,a_weight_sep,partition,work,control)
-        INTEGER, INTENT(IN) :: a_n ! order of matrix
-        INTEGER, INTENT(IN) :: a_ne ! number of entries in matrix
-        INTEGER, INTENT(IN) :: a_ptr(a_n) ! On input a_ptr(i) contains 
-             ! position in a_row that entries for column i start. 
-        INTEGER, INTENT(IN) :: a_row(a_ne) ! On input a_row contains row 
-             ! indices of the non-zero rows. Diagonal entries have been removed
-             ! and the matrix expanded.
-        INTEGER, INTENT(IN) :: a_weight(a_n) ! On input a_weight(i) contains 
-             ! the weight of column i 
-        INTEGER, INTENT(IN) :: sumweight ! Sum of weights in a_weight
-        INTEGER, INTENT(IN) :: radius ! Check nodes at most distance radius 
-                                ! from current node. Ball = these nodes
-        REAL (myreal_mc70) :: ratio ! Current node in partition i.
-             ! If |Ball \cap (P_j \cup S)|/|Ball \cap P_i| > ratio, current node
-             !    will be moved into expanded separator
-        REAL (myreal_mc70) :: upper ! Weight of expanded separator must not 
-             ! exceed upper*(weight of initial separator)
-        INTEGER, INTENT(INOUT) :: a_n1 ! Size of partition 1
-        INTEGER, INTENT(INOUT) :: a_n2 ! Size of partition 2
-        INTEGER, INTENT(INOUT) :: a_weight_1,a_weight_2,a_weight_sep ! Weighted 
-             ! size of partitions and separator
-        INTEGER, INTENT(INOUT) :: partition(a_n) !First a_n1 entries contain
-             ! list of (local) indices in partition 1; next a_n2 entries  
-             ! contain list of (local) entries in partition 2; entries in 
-             ! separator are listed at the end. This is updated to the new 
-             ! partition
-        INTEGER, INTENT(OUT) :: work(5*a_n) ! Work array
-        TYPE(mc70_control), INTENT(IN) :: control
 
-        ! Local variables
-        INTEGER :: i,j,jj,head,tail,headb,tailb,k,l,t,s
-        INTEGER :: no_part1,no_part2,no_sep,w_sep_orig
-        INTEGER :: work_part,work_next,work_mask,work_dist,work_nextb
-        LOGICAL :: move
-
-        ! Divide up workspace
-        work_part = 0
-        work_next = work_part + a_n
-        work_mask = work_next + a_n
-        work_dist = work_mask + a_n
-        work_nextb = work_dist + a_n
-
-        ! Set work(work_part+1:work_part+a_n) to hold flags to indicate what 
-        ! part of the partition the nodes are in
-        work_part = 0
-        DO i = 1, a_n1
-            j = partition(i)
-            work(work_part+j) = mc70_part1_flag
-        END DO
-        DO i = a_n1+1, a_n1+a_n2
-            j = partition(i)
-            work(work_part+j) = mc70_part2_flag
-        END DO
-        DO i = a_n1+a_n2+1, a_n
-            j = partition(i)
-            work(work_part+j) = mc70_sep_flag
-        END DO
-        w_sep_orig = a_weight_sep
-
-        ! Work through separator adding adjacent entries to list
-        head = 0
-        tail = 0
-        work(work_next+1:work_next+a_n) = 0
-        work(work_mask+1:work_mask+a_n) = 0
-        s=0
-        DO i = a_n1+a_n2+1, a_n
-           j = partition(i)
-           IF (j.EQ. a_n) THEN
-              t = a_ne
-           ELSE
-              t = a_ptr(j+1)-1
-           END IF
-           DO k = a_ptr(j),t
-              l = a_row(k)
-              IF ((work(work_part+l).NE.mc70_sep_flag) .AND. &
-                  (work(work_mask+l).EQ.0)) THEN
-                  ! Add l to list
-                  s=s+1
-                  work(work_mask+l) = 1
-                  IF (tail.EQ.0) THEN
-                     head = l
-                     tail = l
-                  ELSE
-                     work(work_next+tail) = l
-                     tail = l
-                  END IF
-              END IF
-           END DO
-        END DO
-        work(work_nextb+1:work_nextb+a_n) = 0
-        work(work_dist+1:work_dist+a_n) = -1
-        DO WHILE (head.NE.0)
-          i = head
-          IF ((work(work_part+i).EQ.mc70_part1_flag) .AND. a_n1.EQ.1) THEN
-            GOTO 100
-          END IF
-          IF ((work(work_part+i).EQ.mc70_part2_flag) .AND. a_n2.EQ.1) THEN
-            GOTO 100
-          END IF
-          IF ( real(a_weight_sep + a_weight(i)) .GT. upper*real(w_sep_orig) ) THEN
-            GOTO 100
-          END IF
-
-          work(work_dist+i) = 0
-          headb = 0
-          tailb = 0
-          ! create list with all entries in Ball
-          IF (i.EQ.a_n) THEN
-             jj = a_ne
-          ELSE
-             jj = a_ptr(i+1)-1
-          END IF
-
-          DO j = a_ptr(i),jj
-             l = a_row(j)
-             ! Add l to Ball list
-             IF (tail.EQ.0) THEN
-                 headb = l
-                 tailb = l
-             ELSE
-                 work(work_nextb+tailb) = l
-                 tailb = l
-             END IF
-             work(work_dist+l) = 1
-          END DO
-
-
-          ! count entries in ball that are in partition  and separator
-          ! empty list as proceed
-          no_part1=0
-          no_sep = 0
-          DO WHILE (headb.NE.0)
-            k = headb
-            IF (work(work_part+k).EQ.mc70_sep_flag) THEN
-              no_sep=no_sep+a_weight(k)             
-            ELSE
-              no_part1=no_part1+a_weight(k)  
-            END IF
-            headb = work(work_nextb+k)
-            work(work_dist+k) = -1
-            work(work_nextb+k) = 0
-            k = headb
-          END DO
-
-          move = .FALSE.
-             !If |Ball \cap S|/|Ball \cap P_curr| > ratio
-             IF (no_part1.EQ.0) THEN
-               move = .TRUE.
-               a_n1 = a_n1 - 1
-               a_weight_1 = a_weight_1 - a_weight(i)
-               a_weight_sep = a_weight_sep + a_weight(i)
-             ELSE
-                IF (real(no_sep)/real(no_part1).GT.ratio) THEN
-                 move = .TRUE.
-                 a_n1 = a_n1 - 1
-               a_weight_1 = a_weight_1 - a_weight(i)
-               a_weight_sep = a_weight_sep + a_weight(i)
-                END IF
-             END IF     
-          IF (move) THEN
-            work(work_part+i) = mc70_sep_flag
-            j = i
-            IF (j.EQ. a_n) THEN
-              t = a_ne
-            ELSE
-              t = a_ptr(j+1)-1
-            END IF
-            DO k = a_ptr(j),t
-              l = a_row(k)
-              IF ((work(work_part+l).NE.mc70_sep_flag) .AND. &
-                       work(work_mask+l).EQ.0) THEN
-                  ! Add l to list (note: list is non-empty)
-                  work(work_next+tail) = l
-                  work(work_mask+l) = 1
-                  tail = l
-              END IF
-            END DO
-          END IF       
-
-          ! remove i from list
-100       head = work(work_next+i)
-          work(work_next+i) = 0
-          IF (head.EQ.0) THEN
-            tail = 0
-          END IF
-          work(work_dist+i) = -1
-          work(work_mask+i) = 0
-        END DO
-
-        j =1
-        k = 1 + a_n1
-        l = 1 + a_n1 + a_n2 
-        DO i=1,a_n
-          jj = work(work_part+i)
-          IF (jj .EQ. mc70_part1_flag) THEN
-             partition(j) =i
-             j = j+1
-          ELSE  IF (jj .EQ. mc70_part2_flag) THEN
-             partition(k) =i
-             k = k+1
-          ELSE
-             partition(l) =i
-             l = l+1
-          END IF
-        END DO
-        
-        
-      END SUBROUTINE expand_partition_kinks_simple
 
 
 
@@ -9819,12 +9539,10 @@ INNER:    DO inn = 1, n
         beta = 0.5
 
        IF (.true.) THEN
+        tau = ((real(a_weight_sep)**1.0)/real(a_weight_1))/real(a_weight_2)
         IF (imbal .AND. real(max(a_weight_1,a_weight_2))/ &
                    real(min(a_weight_1,a_weight_2)) .GE. ratio ) THEN
-           tau = real(sumweight-2) + real(max(a_weight_1,a_weight_2))/ &
-                   real(min(a_weight_1,a_weight_2))
-        ELSE
-           tau = ((real(a_weight_sep)**1.0)/real(a_weight_1))/real(a_weight_2)
+           tau = real(sumweight-2) + tau
         END IF
       ELSE
         IF (imbal .AND. real(max(a_weight_1,a_weight_2))/ &
