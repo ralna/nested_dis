@@ -1277,7 +1277,6 @@ MODULE hsl_mc70_double
         CALL mc70_partition(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,level,a_n1,a_n2,&
             a_ne1,a_ne2,iperm,work(1:12*a_n+sumweight+a_ne),control,info,&
             use_multilevel)
-           
         
         IF (a_n1 .EQ. a_n) THEN
            GOTO 30
@@ -1731,11 +1730,6 @@ MODULE hsl_mc70_double
         IF (a_n1 .NE. 0 .AND. a_n2 .NE. 0 .AND. a_n .GT. 3 ) THEN
            IF (.not. use_multilevel) THEN
           ! Refine the partition
-          !  write(*,*) '******************'
-          ! write(*,*) 'input',a_n1,a_n2,a_n-a_n1-a_n2,a_weight_1,&
-          !      a_weight_2,a_weight_sep, &
-          !      (real(a_weight_sep)/real(a_weight_1))/real(a_weight_2),&
-          !      real(a_weight_sep)*(1.0+0.3*abs(real(a_weight_1-a_weight_2))/real(sumweight))
            IF (control%refinement .GE. 2) THEN
               IF (min(a_weight_1,a_weight_2) + a_weight_sep .LT. &
                max(a_weight_1,a_weight_2)) THEN
@@ -1768,12 +1762,6 @@ MODULE hsl_mc70_double
                work(partition_ptr+1:partition_ptr+a_n),&
                work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control) 
             !  write(*,*) 'postmax',a_n,a_n1,a_n2
-         
-           !  CALL mc70_refine(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,a_n2,&
-           !    a_weight_1,a_weight_2,a_weight_sep,&
-           !    work(partition_ptr+1:partition_ptr+a_n),&
-           !    work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control,ref_method) 
-             ! write(*,*) 'postfm',a_n,a_n1,a_n2
            ELSE 
             IF (ref_method .EQ. 1) THEN
              IF (control%block) THEN
@@ -1829,21 +1817,21 @@ MODULE hsl_mc70_double
            DO i=1,k
           
             IF (control%ratio .LT. real(sumweight-2)) THEN
-             IF (real(max(a_weight_1,a_weight_2))/real(min(a_weight_1,a_weight_2)) .LT. control%ratio) THEN 
+            ! IF (real(max(a_weight_1,a_weight_2))/real(min(a_weight_1,a_weight_2)) .LT. control%ratio) THEN 
               CALL expand_partition_kinks(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
-               1,2.0_myreal_mc70,1.0_myreal_mc70,a_n1_new,a_n2_new,&
+               1,3.0_myreal_mc70,1.0_myreal_mc70,a_n1_new,a_n2_new,&
                a_weight_1_new,a_weight_2_new,&
                a_weight_sep_new,work(part_ptr+1:part_ptr+a_n),&
                work(work_ptr+1:work_ptr+5*a_n),control)
 
-             ELSE
-              CALL expand_partition(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
-               a_n1_new,a_n2_new,&
-               a_weight_1_new,a_weight_2_new,&
-               a_weight_sep_new,work(part_ptr+1:part_ptr+a_n),&
-               work(work_ptr+1:work_ptr+5*a_n),control)
+            ! ELSE
+            !  CALL expand_partition(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
+            !   a_n1_new,a_n2_new,&
+            !   a_weight_1_new,a_weight_2_new,&
+            !   a_weight_sep_new,work(part_ptr+1:part_ptr+a_n),&
+            !   work(work_ptr+1:work_ptr+5*a_n),control)
 
-             END IF
+            ! END IF
 
             ELSE
               CALL expand_partition_kinks(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
@@ -2183,17 +2171,6 @@ MODULE hsl_mc70_double
           num_levels_nend,lwidth,num_entries)
        ! write(*,*) work(level_ptr_p+1:level_ptr_p+num_levels_nend)
        END IF
-      IF (.false.) THEN
-      if (num_entries .lt. a_n) then
-       if (level.EQ.0) write(*,*) 'diam',-num_levels_nend, a_n, -real(num_levels_nend)/real(a_n), &
-             -(real(num_levels_nend)/real(a_n))/real(a_n),&
-              -((real(num_levels_nend)/real(a_n))/real(a_n))/real(a_n)
-      else
-       if (level.EQ.0) write(*,*) 'diam',num_levels_nend, a_n, real(num_levels_nend)/real(a_n), &
-             (real(num_levels_nend)/real(a_n))/real(a_n),&
-              ((real(num_levels_nend)/real(a_n))/real(a_n))/real(a_n)
-      end if
-      END IF
 
         IF (num_entries .lt. a_n) THEN
            ! matrix is separable
@@ -2672,7 +2649,7 @@ MODULE hsl_mc70_double
 
 ! First guess for starting node is input nstrt
 
-! Generate level structure for node with min supervariable degree
+! Generate level structure for node nstrt
         CALL mc70_level_struct(nstrt,a_n,a_ne,a_ptr,a_row,a_n, &
           work(mask+1:mask+a_n),level_ptr,level,maxdep,lwidth,num_entries)
         IF (num_entries .lt. a_n) THEN
@@ -2683,7 +2660,7 @@ MODULE hsl_mc70_double
         END IF
 
         nstop = level(a_n)
-        DO main = 1,a_n
+        DO main = 1,min(a_n,10)
         ! Store nodes in the final level set and their degrees
           lsize = 0
           DO i=level_ptr(maxdep),a_n
@@ -3355,6 +3332,7 @@ MODULE hsl_mc70_double
          band = a_n
         END IF
         IF (.true.) THEN
+        IF (.true.) THEN
          CALL mc70_fm_refinement_band_balance(a_n,a_ne,a_ptr,a_row,a_weight,&
           sumweight,&
           icut,mult,a_n1,a_n2,a_weight_1,a_weight_2,a_weight_sep,&
@@ -3374,6 +3352,7 @@ MODULE hsl_mc70_double
           work(fm_gain2+1:fm_gain2+a_n),work(fm_done+1:fm_done+a_n),&
           work(fm_head+1:fm_head+icut+mult+1),&
           work(fm_distance+1:fm_distance+a_n))
+        END IF
         END IF
 
         ! Update partition
@@ -9254,8 +9233,8 @@ INNER:    DO inn = 1, n
              l = l+1
           END SELECT
         END DO
-        write(*,*) 'ratio sep', real(a_weight_sep)/real(a_weight_sep_orig),&
-                   (a_weight_sep),(a_weight_sep_orig), a_weight_1, a_weight_2
+     !   write(*,*) 'ratio sep', real(a_weight_sep)/real(a_weight_sep_orig),&
+     !              (a_weight_sep),(a_weight_sep_orig), a_weight_1, a_weight_2
         
       END SUBROUTINE expand_partition
 
@@ -9516,8 +9495,8 @@ INNER:    DO inn = 1, n
           END IF
         END DO
         
-        write(*,*) 'ratio sep kink', real(a_weight_sep)/real(w_sep_orig),&
-                   (a_weight_sep),(w_sep_orig), a_weight_1, a_weight_2
+      !  write(*,*) 'ratio sep kink', real(a_weight_sep)/real(w_sep_orig),&
+      !             (a_weight_sep),(w_sep_orig), a_weight_1, a_weight_2
         
         
       END SUBROUTINE expand_partition_kinks
