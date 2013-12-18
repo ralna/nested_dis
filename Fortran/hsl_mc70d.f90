@@ -1,9 +1,7 @@
 MODULE hsl_mc70_double
   USE hsl_mc79_integer
   USE hsl_mc78_integer
-  USE hsl_zd11_double
-  USE hsl_mc65_double
-  USE hsl_fa14_double
+  USE hsl_fa14_double ! Might be able to remove dependancy in final code
   USE hsl_maxflow
 
       IMPLICIT NONE
@@ -31,7 +29,8 @@ MODULE hsl_mc70_double
 ! ---------------------------------------------------
 ! Real version of partition flags
 ! ---------------------------------------------------
-      REAL (myreal_mc70), PARAMETER :: mc70_part1_flag_real = 0.0, & ! node in partition 1
+      REAL (myreal_mc70), PARAMETER :: mc70_part1_flag_real = 0.0, & ! node 
+                                                     ! in partition 1
         mc70_part2_flag_real = 2.0, & ! node in partition 2
         mc70_sep_flag_real = 1.0
 
@@ -45,55 +44,47 @@ MODULE hsl_mc70_double
         INTEGER :: print_level = 0 ! amount of informational output required
         INTEGER :: unit_diagnostics = 6 ! stream number for diagnostic messages
         INTEGER :: unit_error = 6 ! stream number for error messages
-        INTEGER :: ml = 2 ! Are we allowed to use a multilevel 
-           ! strategy
-           ! <= 0 : do not use multilevel
-           ! == 1 : use multilevel
-           ! >= 2 : automatic choice based on size of levelsets
-        INTEGER :: coarsen = 1 ! Which coarsening method to use
-           ! > 0 : heavy-edge
-           ! <= 0 : common neighbours
-        INTEGER :: nd_max_levels = 20 ! maximum number of ND levels to be performed
+        INTEGER :: max_levels = 20 ! maximum number of ND levels to be performed
         INTEGER :: nd_switch = 50 ! switch to (halo)AMD if matrix size
                  ! is less than or equal to nd_switch 
+        REAL (myreal_mc70) :: ratio = 1.5_myreal_mc70 ! Try to make sure that 
+                                           ! max(P1,P2)/min(P1/P2) <= ratio
+        LOGICAL :: remove_dense = .TRUE. ! test the input for dense rows and place
+                 ! them at the end of the ordering
+
+
+        INTEGER :: max_search = 5 ! during pseudo-periph search, check at most 
+           ! max_search nodes in last level set during each search iteration
+           ! NOT EXPECTED TO BE AVAILABLE IN FINAL CODE
         INTEGER :: partition_method = 1 ! Which partition method to use at coarsest level
            ! <=1 : Ashcraft method (half-level set)
            ! >=2 : Level-set method
+           ! NOT EXPECTED TO BE AVAILABLE IN FINAL CODE (Ashcraft always used)
         INTEGER :: refinement = 2 ! Which sort of refinement to use
-           ! <1 : trim + fm
+           ! <-1: automatic choice between maxflow & DM (fm used)
+           ! =-1: maxflow + fm
+           ! =0 : trim + fm
            ! =1 : DM + fm
-           ! >1 : automatic choice
+           ! >1 : automatic choice between trim & DM (fm used)
+           ! NOT EXPECTED TO BE AVAILABLE IN FINAL CODE
         INTEGER :: refinement_band = 4 ! band width for FM refinement. Values less than 1 
-         ! mean that full FM refinement is done
-        LOGICAL :: remove_dense = .TRUE. ! test the input for dense rows and place
-                 ! them at the end of the ordering
-        INTEGER :: ml_max_levels = 20 ! Max number of levels in the multilevel grid
-        INTEGER :: ml_switch = 50 ! Stop coarsening once matrix has order at most ml_switch
-
-! minimum and maximum grid reduction factors
-! that must be achieved during coarsening.
-! If cgrid%size is greater than ml_max_reduction*grid%size
-! or cgrid%size is less than ml_min_reduction*grid%size
-! then carry on coarsening
-        REAL (myreal_mc70) :: ml_min_reduction = 0.01 ! size of next multigrid 
-   !matrix must be greater than ml_min_reduction*(size of current multigrid matrix)
-        REAL (myreal_mc70) :: ml_max_reduction = 0.9 ! size of next multigrid 
-   !matrix must be less than ml_max_reduction*(size of current multigrid matrix)
-        REAL (myreal_mc70) :: ratio = huge(mc70_sep_flag_real) ! Try to make sure that 
-                                           ! max(P1,P2)/min(P1/P2) <= ratio
-
-        REAL (myreal_mc70) :: ml_bandwidth = 1.0 ! Let B be matrix A after 
-   ! dense rows removed and compressed. If ml>1 and bandwidth of B after RCM 
-   ! ordering is larger than ml_bandwidth*order(B), continue as if ml=1; 
-   ! otherwise continue as if ml=0; If B is separable, perform test on each 
-   ! component separately use accordingly with each component. Note: RCM 
-   ! ordering is not computed.
-        LOGICAL :: block = .true.
-        INTEGER :: expand = 0
-        LOGICAL :: expand_scale = .true.
-        INTEGER :: nstrt = 1  ! 1 = min degree
-                               ! 2 = max degree
-        INTEGER :: ww = 2
+         ! mean that full FM refinement is done (slow)
+           ! NOT EXPECTED TO BE AVAILABLE IN FINAL CODE
+        LOGICAL :: block = .true. ! If true, use block version of trimming
+         ! Unlikely to be available to user in final code
+           ! NOT EXPECTED TO BE AVAILABLE IN FINAL CODE
+        INTEGER :: expand = 0 ! Maximum number of expansions to be done when forming separator
+           ! NOT EXPECTED TO BE AVAILABLE IN FINAL CODE
+        INTEGER :: nstrt = 1  ! Currently only used if partition_method = 1:
+                               ! 1 = vertex with min degree used to start pseudo-periph search
+                               ! 2 = vertex with max degree used to start pseudo-periph search
+                               ! 3 = vertex 1 used to start pseudo-periph search
+                               ! 4 = random vertex used to start pseudo-periph search
+                               ! 5 = vertex with max degree used to start pseudo-periph search
+           ! NOT EXPECTED TO BE AVAILABLE IN FINAL CODE
+        INTEGER :: ww = 2   ! Number of adjacent half-level sets that are 
+                             ! combined to form candidate initial separators.
+           ! NOT EXPECTED TO BE AVAILABLE IN FINAL CODE
       END TYPE mc70_control
 
 ! *****************************************************************
@@ -103,59 +94,14 @@ MODULE hsl_mc70_double
         INTEGER :: ndense = 0 ! holds number of dense rows 
         INTEGER :: stat = 0 ! holds Fortran stat parameter
         INTEGER :: nsuper = 0 ! holds number of supervariables + number of zero rows
+           ! NOT EXPECTED TO BE AVAILABLE IN FINAL CODE
         REAL (myreal_mc70) :: band = -1 ! holds L, where L is the size 
            ! of the largest level set at the top level of nested dissection. If 
            ! the matrix is reducible, then it holds the maximum value over all 
            ! of the irreducible components. 
-           ! Not returned if control%ml==1.
+           ! NOT EXPECTED TO BE AVAILABLE IN FINAL CODE
       END TYPE mc70_info
 
-! *****************************************************************
-
-      TYPE mc70_multigrid
-
-        INTEGER :: size ! size of this level (number of rows)
-        TYPE (zd11_type), POINTER :: graph ! this level of matrix
-        INTEGER, POINTER, DIMENSION (:) :: where ! where each row of this 
-! level of matrix will go (ie ordering for this level)
-        INTEGER, POINTER, DIMENSION (:) :: row_wgt !number of vertices 
-! this vertex of the coarse graph matrix represents
-        INTEGER :: level ! the level
-        INTEGER :: part_div(2) ! number of vertices in each part
-        TYPE (mc70_multigrid), POINTER :: coarse ! pointer to the coarse grid
-        TYPE (mc70_multigrid), POINTER :: fine ! pointer to the fine grid
-        TYPE (zd11_type), POINTER :: p ! the prolongation operator
-
-      END TYPE mc70_multigrid
-! *****************************************************************
-
-      TYPE list_node_type
-        INTEGER :: id
-        TYPE (list_node_type), POINTER :: next
-        TYPE (list_node_type), POINTER :: prev
-      END TYPE list_node_type
-! *****************************************************************
-
-! this is the first node in the bucket, any new node will be added
-! before this node and become the first node
-! thus this is a last-in-first-out scheme
-      TYPE list_node_pointer
-        TYPE (list_node_type), POINTER :: current_node
-      END TYPE list_node_pointer
-! *****************************************************************
-
-      TYPE queue_type
-        INTEGER :: low_bound, up_bound
-! maxnodes = max no. of nodes allowed (as dimension of mynode)
-! maxgain = max gain so far in the buckets (gives the highest non-empty bucket)
-! num_nodes = total number of nodes in the buckets
-        INTEGER :: maxnodes, maxgain, num_nodes
-! the starting node of each bucket (point to NULL if empty)
-        TYPE (list_node_pointer), POINTER, DIMENSION (:) :: buckets
-! the location of each node in the buckets
-        TYPE (list_node_type), POINTER, DIMENSION (:) :: mynode
-      END TYPE queue_type
-! *****************************************************************
 
 ! ---------------------------------------------------
 ! Interfaces
@@ -167,10 +113,6 @@ MODULE hsl_mc70_double
       INTERFACE mc70_order_full
         MODULE PROCEDURE mc70_nested_lower_upper_double
       END INTERFACE
-
-   !   INTERFACE mc70_print_message
-   !     MODULE PROCEDURE mc70_print_message_double
-   !   END INTERFACE
 
       PUBLIC mc70_order, mc70_order_full
 
@@ -241,7 +183,7 @@ MODULE hsl_mc70_double
         INTEGER, INTENT(OUT),OPTIONAL :: seps(n)
                  ! seps(i) is -1 if vertex is not in a separator; otherwise it
                  ! is equal to l, where l is the nested dissection level at
-                 ! which it became part of the separator
+                 ! which it became part of the separator. NOT IN FINAL CODE
 
 ! ---------------------------------------------------
 ! LOCAL VARIABLES
@@ -413,7 +355,7 @@ MODULE hsl_mc70_double
         INTEGER, INTENT(OUT), OPTIONAL :: seps(n)
                  ! seps(i) is -1 if vertex is not in a separator; otherwise it
                  ! is equal to l, where l is the nested dissection level at
-                 ! which it became part of the separator
+                 ! which it became part of the separator. NOT IN FINAL CODE.
 
 ! ---------------------------------------------------
 ! LOCAL VARIABLES
@@ -587,7 +529,6 @@ MODULE hsl_mc70_double
         INTEGER, ALLOCATABLE, DIMENSION(:) :: work ! space for doing work
         INTEGER, ALLOCATABLE, DIMENSION(:) :: svwork ! supervariable work space
         LOGICAL :: printe, printi, printd
-        LOGICAL :: use_multilevel
 
 ! ---------------------------------------------
 ! Printing levels
@@ -766,7 +707,7 @@ MODULE hsl_mc70_double
 
 ! Carryout nested dissection on matrix once dense rows removed
 
-        IF (control%nd_max_levels .LE. 0 .or. a_n_curr .LE. &
+        IF (control%max_levels .LE. 0 .or. a_n_curr .LE. &
                max(2,control%nd_switch)) THEN
           ! Apply AMD to matrix
 ! Allocate work to have length 5*a_n_curr+a_ne_curr
@@ -838,7 +779,6 @@ MODULE hsl_mc70_double
           END IF
           IF (info%stat/=0)  GOTO 10
 
-          use_multilevel = .true.
           IF (nsvar+num_zero_row .EQ. a_n_new) THEN
              sumweight = sum(a_weight(1:a_n_curr))
              lwork = 12*a_n_curr+sumweight+a_ne_curr
@@ -847,13 +787,12 @@ MODULE hsl_mc70_double
                 a_row(1:a_ne_curr),a_weight(1:a_n_curr),sumweight,iperm(1:a_n_curr),&
                 work(1:lwork),work(lwork+1:lwork+a_n_curr),&
                 work(lwork+a_n_curr+1:lwork+2*a_n_curr),0,control,info,&
-                use_multilevel,seps(1:a_n_curr))
+                seps(1:a_n_curr))
              ELSE
                call mc70_nested_internal(a_n_curr,a_ne_curr,a_ptr(1:a_n_curr),&
                 a_row(1:a_ne_curr),a_weight(1:a_n_curr),sumweight,iperm(1:a_n_curr),&
                 work(1:lwork),work(lwork+1:lwork+a_n_curr),&
-                work(lwork+a_n_curr+1:lwork+2*a_n_curr),0,control,info,&
-                use_multilevel)
+                work(lwork+a_n_curr+1:lwork+2*a_n_curr),0,control,info)
 
              END IF
           ELSE
@@ -865,14 +804,13 @@ MODULE hsl_mc70_double
                 work(work_iperm+1:work_iperm+a_n_curr),&
                 work(1:lwork),work(lwork+1:lwork+a_n_curr),&
                 work(lwork+a_n_curr+1:lwork+2*a_n_curr),0,control,info,&
-                use_multilevel,work(work_seps+1:work_seps+a_n_curr))
+                work(work_seps+1:work_seps+a_n_curr))
              ELSE
                call mc70_nested_internal(a_n_curr,a_ne_curr,a_ptr(1:a_n_curr),&
                 a_row(1:a_ne_curr),a_weight(1:a_n_curr),sumweight,&
                 work(work_iperm+1:work_iperm+a_n_curr),&
                 work(1:lwork),work(lwork+1:lwork+a_n_curr),&
-                work(lwork+a_n_curr+1:lwork+2*a_n_curr),0,control,info,&
-                use_multilevel)
+                work(lwork+a_n_curr+1:lwork+2*a_n_curr),0,control,info)
 
              END IF
           END IF
@@ -1205,7 +1143,7 @@ MODULE hsl_mc70_double
 
       RECURSIVE SUBROUTINE mc70_nested_internal(a_n,a_ne,a_ptr,a_row,a_weight,&
          sumweight,iperm,work,work_comp_n,work_comp_nz,level,&
-         control,info,use_multilevel,seps)
+         control,info,seps)
 
         INTEGER, INTENT(IN) :: a_n ! dimension of subproblem ND is applied to
         INTEGER, INTENT(IN) :: a_ne ! no. nonzeros of subproblem
@@ -1231,7 +1169,6 @@ MODULE hsl_mc70_double
         INTEGER, INTENT(IN) :: level ! which level of nested dissection is this
         TYPE (mc70_control), INTENT(IN) :: control 
         TYPE (mc70_info), INTENT(INOUT) :: info
-        LOGICAL, INTENT(INOUT) :: use_multilevel
         INTEGER, INTENT(INOUT),OPTIONAL :: seps(a_n)
                  ! seps(i) is -1 if vertex i of permuted submatrix is not in a 
                  ! separator; otherwise it is equal to l, where l is the nested
@@ -1272,11 +1209,10 @@ MODULE hsl_mc70_double
 
 ! Check whether max number of levels has been reached or if matrix size is below
 ! nd_switch
-        IF (level .GE. control%nd_max_levels .OR. a_n .LE. max(2,control%nd_switch)) &
+        IF (level .GE. control%max_levels .OR. a_n .LE. max(2,control%nd_switch)) &
            GOTO 30
         CALL mc70_partition(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,level,a_n1,a_n2,&
-            a_ne1,a_ne2,iperm,work(1:12*a_n+sumweight+a_ne),control,info,&
-            use_multilevel)
+            a_ne1,a_ne2,iperm,work(1:12*a_n+sumweight+a_ne),control,info)
         
         IF (a_n1 .EQ. a_n) THEN
            GOTO 30
@@ -1291,7 +1227,7 @@ MODULE hsl_mc70_double
              num_components,work_comp_n(1:a_n),work_comp_nz(1:a_n),&
              work(compwork+1:compwork+3*a_n+a_ne),control,info)
           IF (num_components.EQ.1) THEN
-             k = control%nd_max_levels
+             k = control%max_levels
           ELSE
              k = level
           END IF
@@ -1303,8 +1239,6 @@ MODULE hsl_mc70_double
             ! work from last component so that space at end of work_comp_n and 
             ! work_comp_nz can be reused without worrying about overwriting 
             ! important data
-           ! write(*,*) work_comp_n(1:i)
-           ! write(*,*) work_comp_nz(1:i)
             j = a_n
             DO WHILE (i .GE. 1)
               l = work_comp_n(i)
@@ -1322,7 +1256,7 @@ MODULE hsl_mc70_double
                  work(compwork+1:compwork+12*l+s+m),&
                  work_comp_n(j-l+1:j),&
                  work_comp_nz(j-l+1:j),k,control,info,&
-                 use_multilevel,seps(offset_ptr-l:offset_ptr-1))
+                 seps(offset_ptr-l:offset_ptr-1))
                ELSE
                 CALL mc70_nested_internal(l,m,&
                  a_ptr(offset_ptr-l:offset_ptr-1),&
@@ -1332,8 +1266,7 @@ MODULE hsl_mc70_double
                  iperm(offset_ptr-l:offset_ptr-1),&
                  work(compwork+1:compwork+12*l+s+m),&
                  work_comp_n(j-l+1:j),&
-                 work_comp_nz(j-l+1:j),k,control,info,&
-                 use_multilevel)
+                 work_comp_nz(j-l+1:j),k,control,info)
 
                END IF
               END IF
@@ -1353,13 +1286,13 @@ MODULE hsl_mc70_double
             CALL mc70_nested_internal(a_n1,a_ne1,a_ptr(1:a_n1),a_row(1:a_ne1),&
              a_weight(1:a_n1),sumweight_sub,iperm(1:a_n1),&
              work(1:12*a_n1+sumweight_sub+a_ne1),work_comp_n(1:a_n1),&
-             work_comp_nz(1:a_n1),level+1,control,info,use_multilevel,&
+             work_comp_nz(1:a_n1),level+1,control,info,&
              seps(1:a_n1))
            ELSE
             CALL mc70_nested_internal(a_n1,a_ne1,a_ptr(1:a_n1),a_row(1:a_ne1),&
              a_weight(1:a_n1),sumweight_sub,iperm(1:a_n1),&
              work(1:12*a_n1+sumweight_sub+a_ne1),work_comp_n(1:a_n1),&
-             work_comp_nz(1:a_n1),level+1,control,info,use_multilevel)
+             work_comp_nz(1:a_n1),level+1,control,info)
            END IF
 
         END IF
@@ -1372,14 +1305,14 @@ MODULE hsl_mc70_double
              a_row(a_ne1+1:a_ne1+a_ne2),&
              a_weight(a_n1+1:a_n1+a_n2),sumweight_sub,iperm(a_n1+1:a_n1+a_n2),&
              work(1:12*a_n2+sumweight_sub+a_ne2),work_comp_n(1:a_n2),&
-             work_comp_nz(1:a_n2),level+1,control,info,use_multilevel,&
+             work_comp_nz(1:a_n2),level+1,control,info,&
              seps(a_n1+1:a_n1+a_n2))
             ELSE
              CALL mc70_nested_internal(a_n2,a_ne2,a_ptr(a_n1+1:a_n1+a_n2),&
              a_row(a_ne1+1:a_ne1+a_ne2),&
              a_weight(a_n1+1:a_n1+a_n2),sumweight_sub,iperm(a_n1+1:a_n1+a_n2),&
              work(1:12*a_n2+sumweight_sub+a_ne2),work_comp_n(1:a_n2),&
-             work_comp_nz(1:a_n2),level+1,control,info,use_multilevel)
+             work_comp_nz(1:a_n2),level+1,control,info)
             END IF
            ELSE
             sumweight_sub = sum(a_weight(a_n1+1:a_n1+a_n2))
@@ -1388,14 +1321,14 @@ MODULE hsl_mc70_double
              a_row(1:a_ne2),&
              a_weight(a_n1+1:a_n1+a_n2),sumweight_sub,iperm(a_n1+1:a_n1+a_n2),&
              work(1:12*a_n2+sumweight_sub+a_ne2),work_comp_n(1:a_n2),&
-             work_comp_nz(1:a_n2),level+1,control,info,use_multilevel,&
+             work_comp_nz(1:a_n2),level+1,control,info,&
              seps(a_n1+1:a_n1+a_n2))
             ELSE
              CALL mc70_nested_internal(a_n2,a_ne2,a_ptr(1:a_n2),&
              a_row(1:a_ne2),&
              a_weight(a_n1+1:a_n1+a_n2),sumweight_sub,iperm(a_n1+1:a_n1+a_n2),&
              work(1:12*a_n2+sumweight_sub+a_ne2),work_comp_n(1:a_n2),&
-             work_comp_nz(1:a_n2),level+1,control,info,use_multilevel)
+             work_comp_nz(1:a_n2),level+1,control,info)
 
             END IF
 
@@ -1420,8 +1353,6 @@ MODULE hsl_mc70_double
           work(hamd_irn+a_ne+1:hamd_irn+lirn) = 0
           work(hamd_ip+1:hamd_ip+a_n) = a_ptr(1:a_n)
           work(hamd_sep+1:hamd_sep+a_n) = mc70_sep_flag-1
-         ! write(*,*) work(hamd_ip+1:hamd_ip+a_n),a_ne+1
-         ! write(*,*) work(hamd_irn+1:hamd_irn+a_ne)
           call hamd(a_n,a_ne,lirn,work(hamd_irn+1:hamd_irn+lirn),&
              work(hamd_ip+1:hamd_ip+a_n),work(hamd_sep+1:hamd_sep+a_n),&
              work(hamd_perm+1:hamd_perm+a_n),&
@@ -1624,7 +1555,7 @@ MODULE hsl_mc70_double
 ! small enough, apply halo amd
 
       SUBROUTINE mc70_partition(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,level,a_n1,&
-         a_n2,a_ne1,a_ne2,iperm,work,control,info,use_multilevel)
+         a_n2,a_ne1,a_ne2,iperm,work,control,info)
 
         INTEGER, INTENT(IN) :: a_n ! dimension of subproblem ND is applied to
         INTEGER, INTENT(IN) :: a_ne ! no. nonzeros of subproblem
@@ -1646,7 +1577,6 @@ MODULE hsl_mc70_double
              ! row in the original matrix (when mc70_nested was called) that 
              ! row i in this sub problem maps to. On output, this is updated to
              ! reflect the computed permutation.
-        LOGICAL, INTENT(INOUT) :: use_multilevel
         INTEGER, INTENT(OUT) :: work(12*a_n+sumweight+a_ne)
         TYPE (mc70_control), INTENT(IN) :: control 
         TYPE (mc70_info), INTENT(INOUT) :: info
@@ -1712,15 +1642,14 @@ MODULE hsl_mc70_double
                a_n2,a_weight_1,a_weight_2,a_weight_sep,&
                work(partition_ptr+1:partition_ptr+a_n),&
                work(work_ptr+1:work_ptr+9*a_n+sumweight+a_ne/2),control,&
-               info%flag,info%band,use_multilevel)
+               info%flag,info%band)
         ELSE
            ! Level set method
            CALL mc70_level_set(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
                level,a_n1,a_n2,&
                a_weight_1,a_weight_2,a_weight_sep,&
                work(partition_ptr+1:partition_ptr+a_n), &
-               work(work_ptr+1:work_ptr+4*a_n),control,info%flag,info%band,&
-               use_multilevel)
+               work(work_ptr+1:work_ptr+4*a_n),control,info%flag,info%band)
 
         END IF
         IF (a_n1+a_n2.EQ. a_n) THEN
@@ -1728,7 +1657,6 @@ MODULE hsl_mc70_double
         END IF
 
         IF (a_n1 .NE. 0 .AND. a_n2 .NE. 0 .AND. a_n .GT. 3 ) THEN
-           IF (.not. use_multilevel) THEN
           ! Refine the partition
            IF (control%refinement .GE. 2) THEN
               IF (min(a_weight_1,a_weight_2) + a_weight_sep .LT. &
@@ -1738,30 +1666,32 @@ MODULE hsl_mc70_double
                  ref_method = 1
               END IF
            ELSE
-              IF (control%refinement .LT. 0) THEN
+              IF (control%refinement .LT. -1) THEN
                 IF (min(a_weight_1,a_weight_2) + a_weight_sep .LT. &
                    max(a_weight_1,a_weight_2)) THEN
                  ref_method = 2
                 ELSE
                  ref_method = 0
                 END IF
-              ELSE 
-               IF (control%refinement .EQ. 0) THEN
-                 ref_method = 1
+              ELSE                
+               IF (control%refinement .EQ. -1) THEN
+                 ref_method = 0
                ELSE
+                IF (control%refinement .EQ. 0) THEN
+                 ref_method = 1
+                ELSE
                  ref_method = 2
+                END IF
                END IF
               END IF
            END IF
             
            IF (ref_method .EQ. 0) THEN
-            !  write(*,*) 'premax',a_n,a_n1,a_n2
               CALL mc70_refine_max_flow(a_n,a_ne,a_ptr,a_row,a_weight,&
                sumweight,a_n1,a_n2,&
                a_weight_1,a_weight_2,a_weight_sep,&
                work(partition_ptr+1:partition_ptr+a_n),&
                work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control) 
-            !  write(*,*) 'postmax',a_n,a_n1,a_n2
            ELSE 
             IF (ref_method .EQ. 1) THEN
              IF (control%block) THEN
@@ -1807,35 +1737,21 @@ MODULE hsl_mc70_double
              a_weight_2_new = a_weight_2
              a_weight_sep_new = a_weight_sep
            END IF
-           IF (control%expand_scale) THEN
-             k = control%expand-level
-           ELSE
-             k = control%expand
-           END IF
             part_ptr = work_ptr+8*a_n+sumweight+a_ne/2+1
             work(part_ptr+1:part_ptr+a_n) = work(partition_ptr+1:partition_ptr+a_n)
-           DO i=1,k
+           DO i=1,control%expand
           
             IF (control%ratio .LT. real(sumweight-2)) THEN
-            ! IF (real(max(a_weight_1,a_weight_2))/real(min(a_weight_1,a_weight_2)) .LT. control%ratio) THEN 
               CALL expand_partition_kinks(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
                1,3.0_myreal_mc70,1.0_myreal_mc70,a_n1_new,a_n2_new,&
                a_weight_1_new,a_weight_2_new,&
                a_weight_sep_new,work(part_ptr+1:part_ptr+a_n),&
                work(work_ptr+1:work_ptr+5*a_n),control)
 
-            ! ELSE
-            !  CALL expand_partition(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
-            !   a_n1_new,a_n2_new,&
-            !   a_weight_1_new,a_weight_2_new,&
-            !   a_weight_sep_new,work(part_ptr+1:part_ptr+a_n),&
-            !   work(work_ptr+1:work_ptr+5*a_n),control)
-
-            ! END IF
 
             ELSE
-              CALL expand_partition_kinks(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
-               1,3.0_myreal_mc70,1.0_myreal_mc70,a_n1_new,a_n2_new,&
+              CALL expand_partition(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
+               a_n1_new,a_n2_new,&
                a_weight_1_new,a_weight_2_new,&
                a_weight_sep_new,work(part_ptr+1:part_ptr+a_n),&
                work(work_ptr+1:work_ptr+5*a_n),control)
@@ -1851,7 +1767,7 @@ MODULE hsl_mc70_double
                  ref_method = 1
               END IF
            END IF
-           IF (control%refinement .LT. 0) THEN
+           IF (control%refinement .LT. -1) THEN
                 IF (min(a_weight_1,a_weight_2) + a_weight_sep .LT. &
                    max(a_weight_1,a_weight_2)) THEN
                  ref_method = 2
@@ -1924,9 +1840,7 @@ MODULE hsl_mc70_double
                exit
             END IF
            END DO
-
-
-           END IF  
+ 
         ELSE
           GOTO 10
         END IF
@@ -1934,7 +1848,7 @@ MODULE hsl_mc70_double
         IF ((a_n1 .le. max(2,control%nd_switch) .and. &
             a_n2 .le. max(2,control%nd_switch))) THEN
           !  apply halo amd to submatrics
-           CALL hamd_both_old1(a_n,a_ne,a_ptr,a_row,a_n1,a_n2,&
+           CALL hamd_both(a_n,a_ne,a_ptr,a_row,a_n1,a_n2,&
             work(partition_ptr+1:partition_ptr+a_n),iperm,a_weight,&
             work(work_ptr+1:work_ptr+12*a_n+a_ne))
            a_ne1 = 0
@@ -1947,7 +1861,6 @@ MODULE hsl_mc70_double
             work(partition_ptr+1:partition_ptr+a_n),iperm,&
             a_weight,a_ne2,work(work_ptr+1:work_ptr+11*a_n+a_ne))
           a_ne1 = 0
-
 
         ELSE IF (a_n2 .le. max(2,control%nd_switch)) THEN
           !  apply halo amd to [A2, B2'; B2, I] using two levels
@@ -2013,7 +1926,7 @@ MODULE hsl_mc70_double
     RECURSIVE  SUBROUTINE mc70_ashcraft(a_n,a_ne,a_ptr,a_row,a_weight,&
         sumweight,level,nstrt,nend,a_n1,&
         a_n2,a_weight_1,a_weight_2,a_weight_sep,partition,work,control,info,&
-        band,use_multilevel)
+        band)
 
         INTEGER, INTENT(IN) :: a_n ! dimension of subproblem ND is applied to
         INTEGER, INTENT(IN) :: a_ne ! no. nonzeros of subproblem
@@ -2045,8 +1958,6 @@ MODULE hsl_mc70_double
         REAL (myreal_mc70), INTENT(INOUT) :: band ! If level = 0, then on 
           ! output band = max(band,100*L/a_n), where L is the size of the 
           ! largest levelset
-        LOGICAL,INTENT(INOUT) :: use_multilevel ! are we allowed to use a multilevel
-                ! partitioning strategy
 
 ! ---------------------------------------------
 ! Local variables
@@ -2061,7 +1972,6 @@ MODULE hsl_mc70_double
         INTEGER :: distance_ptr
         INTEGER :: lwidth,mindeg,degree,max_search
         INTEGER :: ww
-        INTEGER :: ml_max_levels ! max no. multigrid levels
         REAL(myreal_mc70) :: bestval
         REAL(myreal_mc70) :: val
         REAL(myreal_mc70) :: ratio
@@ -2088,11 +1998,6 @@ MODULE hsl_mc70_double
         p2sz=0
         sepsz=0
 
-        IF (control%ml==1 .AND. use_multilevel) THEN
-           use_multilevel = .TRUE.
-            GOTO 222
-        END IF
-
         ! Find pseudoperipheral nodes nstart and nend, and the level structure 
         ! rooted at nend
         mask_p = 0 ! size a_n
@@ -2117,7 +2022,7 @@ MODULE hsl_mc70_double
           ELSE
             degree = a_ne + 1 - a_ptr(i)
           END IF
-          IF (degree .LT. mindeg) THEN
+          IF (degree .LE. mindeg) THEN
             mindeg = degree
             nstrt = i
           END IF
@@ -2146,30 +2051,32 @@ MODULE hsl_mc70_double
         
         CASE (5)
          call fa14_random_integer(seed,a_n,nstrt)
-       !  call fa14_random_integer(seed,a_n,nstrt)
-       !  call fa14_random_integer(seed,a_n,nstrt)
+         call fa14_random_integer(seed,a_n,nstrt)
+         call fa14_random_integer(seed,a_n,nstrt)
+         call fa14_random_integer(seed,a_n,nstrt)
+         call fa14_random_integer(seed,a_n,nstrt)
          DO 
             IF (nend .GT.0 .AND. nend .LT. a_n+1 .AND. nend .NE. nstrt) exit           
-            call fa14_random_integer(seed,a_n,nend)       
-            call fa14_random_integer(seed,a_n,nend)
+            call fa14_random_integer(seed,a_n,nend)           
          END DO
         END SELECT
        END IF
-       max_search = 5
+       max_search = control%max_search
         
        IF (nend .LT. 1 .OR. nend.GT. a_n) THEN
-        CALL mc70_find_pseudo(a_n,a_ne,a_ptr,a_row,&
+        CALL mc70_find_pseudo(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
            work(level_ptr_p+1:level_ptr_p+a_n),work(level_p+1:level_p+a_n),&
            nstrt,nend,max_search,work(work_p+1:work_p+2*a_n),num_levels_nend,&
            num_entries,lwidth)
+         !if (level .eq. 0) write(*,*) 'pseudo',lwidth,num_levels_nend, real(lwidth)/real(num_levels_nend)
        ELSE
         ! Find level structure rooted at nend
         work(mask_p+1:mask_p+a_n) = 1
-        CALL mc70_level_struct(nend,a_n,a_ne,a_ptr,a_row,a_n,&
+        CALL mc70_level_struct(nend,a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
           work(mask_p+1:mask_p+a_n),&
           work(level_ptr_p+1:level_ptr_p+a_n),work(level_p+1:level_p+a_n),&
           num_levels_nend,lwidth,num_entries)
-       ! write(*,*) work(level_ptr_p+1:level_ptr_p+num_levels_nend)
+         !if (level .eq. 0) write(*,*) 'rand',lwidth,num_levels_nend, real(lwidth)/real(num_levels_nend),nstrt,nend
        END IF
 
         IF (num_entries .lt. a_n) THEN
@@ -2195,7 +2102,7 @@ MODULE hsl_mc70_double
 
            END DO     
            IF (level .EQ. 0) THEN
-             band = -100.0*real(lwidth,kind(1.0D0))/real(a_n1,kind(1.0D0))
+             band = -100.0*real(lwidth,kind(1.0D0))/real(a_weight_1,kind(1.0D0))
            END IF                
 
            RETURN
@@ -2203,40 +2110,22 @@ MODULE hsl_mc70_double
    
         ! ***********************************************************************  
         IF (level .EQ. 0) THEN
-             band = max(band,100.0*real(lwidth,kind(1.0D0))/real(a_n,kind(1.0D0)))
-        END IF
-        IF (control%ml_max_levels .LE. 0 .OR. control%ml .LT. 1) THEN
-            use_multilevel = .false.
-        END IF
-        IF (control%ml>=2 .AND. level .EQ. 0) THEN
-         IF (real(lwidth,kind(1.0D0))/real(a_n,kind(1.0D0)) .LE. &
-               control%ml_bandwidth   ) THEN
-            use_multilevel = .false.
-         ELSE
-            use_multilevel = .true.
-         END IF
+             band = max(band,100.0*real(lwidth,kind(1.0D0))/real(sumweight,kind(1.0D0)))
         END IF
 
 222     CONTINUE
 
-        IF (use_multilevel) THEN
-           ml_max_levels = control%ml_max_levels
-          lwork = 9*a_n+sumweight+a_ne/2
-          CALL multilevel_partition(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
-          partition,a_n1,a_n2,a_weight_1,a_weight_2,a_weight_sep, &
-          control,info,lwork,work,ml_max_levels)
-          RETURN
-        END IF
 
         ! Find level structure rooted at nstrt
         work(mask_p+1:mask_p+a_n) = 1
-        CALL mc70_level_struct(nstrt,a_n,a_ne,a_ptr,a_row,a_n,&
+        CALL mc70_level_struct(nstrt,a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
           work(mask_p+1:mask_p+a_n),&
           work(level2_ptr_p+1:level2_ptr_p+a_n),work(level2_p+1:level2_p+a_n),&
           num_levels_nstrt,lwidth,num_entries)
-        !write(*,*) work(level2_ptr_p+1:level2_ptr_p+num_levels_nstrt)
-      !  write(*,*) nend, nstrt, work(level_p+1), work(level2_p+1)
-
+        IF (level .EQ. 0) THEN
+             band = min(band,100.0*real(lwidth,kind(1.0D0))/real(sumweight,kind(1.0D0)))
+        END IF
+        ! if (level .eq. 0) write(*,*) 'pseudo1',lwidth,num_levels_nstrt, real(lwidth)/real(num_levels_nstrt)
 
         ! Calculate difference in distances from nstart and nend, and set up 
         ! lists D_i of nodes with same distance
@@ -2248,7 +2137,6 @@ MODULE hsl_mc70_double
           work(level2_ptr_p+1:level2_ptr_p+a_n),work(level2_p+1:level2_p+a_n),&
           work(distance_ptr+1:distance_ptr+2*a_n-1), &
           work(distance+1:distance+a_n))
-        ! write(*,*)  work(distance_ptr+1:distance_ptr+2*a_n-1)
 
         ! Do not need the information in work(level_ptr_p+1:level2_ptr_p)
         ! Calculate total weight in each distance level
@@ -2258,16 +2146,13 @@ MODULE hsl_mc70_double
            DO j = work(distance_ptr+a_n+i),work(distance_ptr+a_n+i+1)-1
              work(dptr+i) = work(dptr+i) + a_weight(work(distance+j))
            END DO
-        !   write(*,*) i,work(dptr+i)
          END DO
          i = num_levels_nend-1
          DO j = work(distance_ptr+a_n+i),a_n
              work(dptr+i) = work(dptr+i) + a_weight(work(distance+j))
          END DO
-         !  write(*,*) i,work(dptr+i)
 
          ww = max(2,control%ww)
-        !write(*,*) ' '
         
          ! Find first possible separator
          p1sz = 0
@@ -2278,9 +2163,7 @@ MODULE hsl_mc70_double
              sepsz = sepsz + work(dptr+i+1+j)
            END DO
            p2sz = sumweight - p1sz-sepsz
-           !  write(*,*) p1sz,sepsz,p2sz
            IF (p1sz .GT. 0 .AND. sepsz .GT. 0) THEN
-           !  write(*,*) p1sz,sepsz,p2sz
              EXIT
            END IF
          END DO
@@ -2315,8 +2198,6 @@ MODULE hsl_mc70_double
            END DO
            p2sz = sumweight-sepsz-p1sz
            IF (p2sz.EQ.0) exit
-          !   write(*,*) j,num_levels_nend-1,p1sz,sepsz,p2sz, work(dptr+j+1:dptr+j+ww+1),sumweight,&
-          !        sum(work(dptr+1-num_levels_nstrt:dptr+num_levels_nend-1))
            CALL cost_function(p1sz,p2sz,&
               sepsz,sumweight,ratio,imbal,val)
            IF (val .LT. bestval ) THEN
@@ -2329,7 +2210,6 @@ MODULE hsl_mc70_double
              a_weight_sep = sepsz
            END IF
          END DO
-        ! write(*,*) a_weight_1,a_weight_2,a_weight_sep,sumweight - a_weight_1-a_weight_2-a_weight_sep
 
          ! Rearrange partition
          ! Entries in partition 1
@@ -2338,14 +2218,12 @@ MODULE hsl_mc70_double
            partition(j) = work(distance+i)
            j = j+1
          END DO
-        !  write(*,*) 'a_n1',a_n1,j-1
 
          ! Entries in partition 2
          DO i = work(distance_ptr+a_n+best_sep_start+ww),a_n
            partition(j) = work(distance+i)
            j = j+1
          END DO
-        !  write(*,*) 'a_n1+a_n2',a_n1+a_n2,j-1
 
          ! Entries in separator
          DO i = work(distance_ptr+a_n+best_sep_start),&
@@ -2353,7 +2231,6 @@ MODULE hsl_mc70_double
            partition(j) = work(distance+i)
            j = j+1
          END DO
-        !  write(*,*) 'a_n',a_n,j-1
          
         info = 0
         IF (printi .or. printd) THEN
@@ -2370,7 +2247,7 @@ MODULE hsl_mc70_double
 ! ---------------------------------------------------
 ! Partition the matrix using the level set method
       SUBROUTINE mc70_level_set(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,level,a_n1,a_n2,&
-        a_weight_1,a_weight_2,a_weight_sep,partition,work,control,info,band,use_multilevel)
+        a_weight_1,a_weight_2,a_weight_sep,partition,work,control,info,band)
 
         INTEGER, INTENT(IN) :: a_n ! dimension of subproblem ND is applied to
         INTEGER, INTENT(IN) :: a_ne ! no. nonzeros of subproblem
@@ -2396,8 +2273,6 @@ MODULE hsl_mc70_double
         REAL (myreal_mc70), INTENT(INOUT) :: band ! If level = 1, then on 
           ! output band = max(band,100*L/a_n), where L is the size of the 
           ! largest levelset
-        LOGICAL,INTENT(INOUT) :: use_multilevel ! are we allowed to use a multilevel
-                ! partitioning strategy
 
 ! ---------------------------------------------
 ! Local variables
@@ -2409,7 +2284,7 @@ MODULE hsl_mc70_double
         INTEGER :: num_entries ! no. entries in level structure rooted at nend
         INTEGER :: best_sep_start
         INTEGER :: i,j,p1sz,p2sz,sepsz,lwidth
-        INTEGER :: ml_max_levels, lwork
+        INTEGER :: lwork
         INTEGER :: mindeg, degree, max_search
         REAL(myreal_mc70) :: bestval
         REAL(myreal_mc70) :: val
@@ -2436,12 +2311,6 @@ MODULE hsl_mc70_double
 
 
 
-        IF (control%ml==1 .AND. use_multilevel) THEN
-           use_multilevel = .TRUE.
-            GOTO 222
-        END IF
-
-
         ! Find pseudoperipheral nodes nstart and nend, and the level structure 
         ! rooted at nend
         level_ptr_p = 0 ! size a_n
@@ -2459,9 +2328,9 @@ MODULE hsl_mc70_double
             nstrt = i
           END IF
         END DO
-        max_search = 5
+        max_search = control%max_search
 
-        CALL mc70_find_pseudo(a_n,a_ne,a_ptr,a_row,&
+        CALL mc70_find_pseudo(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
            work(level_ptr_p+1:level_ptr_p+a_n),work(level_p+1:level_p+a_n),&
            nstrt,nend,max_search,work(work_p+1:work_p+2*a_n),num_levels_nend,&
            num_entries,lwidth)
@@ -2490,29 +2359,8 @@ MODULE hsl_mc70_double
              band = max(band,100.0*real(lwidth,kind(1.0D0))/real(a_n,kind(1.0D0)))
         END IF
 
-        IF ((control%ml<=0) .OR. (use_multilevel &
-           .AND.control%ml_max_levels .LE. 0 ) ) THEN
-            use_multilevel = .false.
-        END IF
-        IF (control%ml>=2 .AND. level .EQ. 0) THEN
-         IF (real(lwidth,kind(1.0D0))/real(a_n,kind(1.0D0)) .LE. &
-               control%ml_bandwidth   ) THEN
-            use_multilevel = .false.
-         ELSE
-            use_multilevel = .true.
-         END IF
-        END IF
 
 222     CONTINUE
-
-        IF (use_multilevel) THEN
-             ml_max_levels = control%ml_max_levels
-          lwork = 9*a_n+sumweight+a_ne/2
-          CALL multilevel_partition(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
-          partition,a_n1,a_n2,a_weight_1,a_weight_2,a_weight_sep, &
-          control,info,lwork,work,ml_max_levels)
-          RETURN
-        END IF
 
          IF (num_levels_nend .LE. 2) THEN
            ! Not possible to find separator
@@ -2604,7 +2452,8 @@ MODULE hsl_mc70_double
 ! mc70_find_pseudo
 ! ---------------------------------------------------
 ! Find pseudoperipheral pairs of nodes for irreducible graph
-      SUBROUTINE mc70_find_pseudo(a_n,a_ne,a_ptr,a_row,level_ptr,level,&
+      SUBROUTINE mc70_find_pseudo(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
+          level_ptr,level,&
            nstrt,nend,max_search,work,num_levels,num_entries,lwidth)
         INTEGER, INTENT(IN) :: a_n ! dimension of subproblem ND is applied to
         INTEGER, INTENT(IN) :: a_ne ! no. nonzeros of subproblem
@@ -2613,6 +2462,10 @@ MODULE hsl_mc70_double
         INTEGER, INTENT(IN) :: a_row(a_ne) ! On input a_row contains row 
              ! indices of the non-zero rows. Diagonal entries have been removed
              ! and the matrix expanded.
+        INTEGER, INTENT(IN) :: a_weight(a_n) ! On input a_weight(i) contains 
+             ! weight of variable i
+        INTEGER, INTENT(IN) :: sumweight ! On input sumweight contains 
+             ! sum(a_weight)
         INTEGER, INTENT(OUT) :: level_ptr(a_n) ! On output level_ptr(i) contains 
              ! position in level that entries for level i start. 
         INTEGER, INTENT(OUT) :: level(a_n) ! On output level contains lists of 
@@ -2629,7 +2482,7 @@ MODULE hsl_mc70_double
 ! ---------------------------------------------
 ! Local variables
         INTEGER :: i, j, k
-        INTEGER :: mindeg, degree,maxdep,main,lwidth1
+        INTEGER :: mindeg, degree,maxdep,main
         INTEGER :: mask,list
         INTEGER :: nstop ! ending pseudoperipheral node
         INTEGER :: node ! Index of graph node
@@ -2637,7 +2490,6 @@ MODULE hsl_mc70_double
         INTEGER :: nlsize ! no. nodes of differing degrees in final level set
         INTEGER :: minwid ! Minimum levelset width
         INTEGER :: nlvl ! number of levels in level structure
-        INTEGER :: minwid1
         j = 0
         mask = 0
         list = mask+a_n
@@ -2650,7 +2502,7 @@ MODULE hsl_mc70_double
 ! First guess for starting node is input nstrt
 
 ! Generate level structure for node nstrt
-        CALL mc70_level_struct(nstrt,a_n,a_ne,a_ptr,a_row,a_n, &
+        CALL mc70_level_struct(nstrt,a_n,a_ne,a_ptr,a_row,a_weight,sumweight, &
           work(mask+1:mask+a_n),level_ptr,level,maxdep,lwidth,num_entries)
         IF (num_entries .lt. a_n) THEN
           ! matrix is separable
@@ -2676,7 +2528,7 @@ MODULE hsl_mc70_double
 
          ! Choose at most max_search nodes
           DO nlsize = 1,max_search
-            ! Look for candiate with least degree
+            ! Look for candidate with least degree
             mindeg = a_n+1
             !mindeg = -1
             DO i = nlsize,lsize
@@ -2705,21 +2557,15 @@ MODULE hsl_mc70_double
 55        nlsize = nlsize-1
 
           ! Loop over nodes in list
-          minwid = huge(a_n)
-          minwid1 = huge(a_n)
+          minwid = sumweight
 
           DO i = 1,nlsize
             node = work(list+i)
 
             ! Form rooted level structures for node
-            CALL mc70_level_struct(node,a_n,a_ne,a_ptr,a_row,minwid, &
+            CALL mc70_level_struct(node,a_n,a_ne,a_ptr,a_row,a_weight,minwid, &
               work(mask+1:mask+a_n),level_ptr,level,nlvl,lwidth,num_entries)
-          ! IF (lwidth .LE. minwid) THEN
-            lwidth1 = 0
-            DO k = 1,nlvl-1
-              lwidth1 = lwidth1 + k*(level_ptr(i+1)-level_ptr(i))
-            END DO 
-            lwidth1 = lwidth1 + nlvl*(a_ne-level_ptr(nlvl))
+            IF (lwidth .LE. minwid) THEN
 
               IF (nlvl .GT. maxdep) THEN
                 ! Level structure of greater depth. Begin a new iteration.
@@ -2728,20 +2574,18 @@ MODULE hsl_mc70_double
    
                  GOTO 70
               ELSE
-                 IF (lwidth1 .LT.minwid1) THEN
+                ! Level structure of lesser width. Record it.
                   
                   nstop = node
                   minwid = lwidth
-                  minwid1 = lwidth1
-                 END IF
               END IF
-         !  END IF
+           END IF
           END DO
           GOTO 80
 70        CONTINUE
         END DO
 80      IF (nstop .NE. node) THEN
-            CALL mc70_level_struct(node,a_n,a_ne,a_ptr,a_row,a_n, &
+            CALL mc70_level_struct(node,a_n,a_ne,a_ptr,a_row,a_weight,sumweight, &
               work(mask+1:mask+a_n),level_ptr,level,nlvl,lwidth,num_entries)
         END IF
         num_levels = maxdep
@@ -2756,7 +2600,7 @@ MODULE hsl_mc70_double
 ! ---------------------------------------------------
 ! Given a root, calculate the level structure of a given graph from that root
 
-      SUBROUTINE mc70_level_struct(root,a_n,a_ne,a_ptr,a_row,maxwid,mask,&
+      SUBROUTINE mc70_level_struct(root,a_n,a_ne,a_ptr,a_row,a_weight,maxwid,mask,&
           level_ptr,level,num_levels,lwidth,num_entries)
 
         INTEGER, INTENT(IN) :: root ! Root node for level structure
@@ -2767,6 +2611,8 @@ MODULE hsl_mc70_double
         INTEGER, INTENT(IN) :: a_row(a_ne) ! On input a_row contains row 
              ! indices of the non-zero rows. Diagonal entries have been removed
              ! and the matrix expanded.
+        INTEGER, INTENT(IN) :: a_weight(a_n) ! On input a_weight(i) contains 
+             ! weight of variable i. 
         INTEGER, INTENT(IN) :: maxwid ! Max permissible width of level structure
         INTEGER, INTENT(INOUT) :: mask(a_n) ! Always restored to input value at
              ! end of the call. mask(node) > 0 for all visible nodes 
@@ -2821,7 +2667,7 @@ MODULE hsl_mc70_double
                 lnbr = lnbr+1
                 level(lnbr) = nbr
                 mask(nbr) = - mask(nbr)
-                lw = lw + 1
+                lw = lw + a_weight(nbr)
               END IF
             END DO
           END DO
@@ -3395,7 +3241,6 @@ MODULE hsl_mc70_double
         INTEGER, INTENT(IN) :: a_ne  ! no. nonzeros in matrix
         INTEGER, INTENT(IN) :: ptr(n) ! row pointers
         INTEGER, INTENT(IN) :: col(a_ne) ! column indices
-       ! TYPE (zd11_type), INTENT (INOUT) :: matrix
 ! The array weight is used to hold a weight on the vertices indicating 
 ! how many vertices from the finer graphs have been combined into the 
 ! current coarse graph vertex. 
@@ -3787,7 +3632,6 @@ INNER:    DO inn = 1, n
 ! Leave loop if inner loop has not found better partition 
           IF (evalc>=(1.0-1.0/(log(real(sumweight))**2.3))*evalo) EXIT
 ! Otherwise we reset evalo and go back to inner loop 
-         ! write(*,*) 'e',evalo,evalc,evalc/evalo
           evalo = evalc
 ! Recompute gains for this new partition 
 ! Compute gains for nodes in cutset 
@@ -3893,7 +3737,6 @@ INNER:    DO inn = 1, n
         INTEGER, INTENT(IN) :: a_ne  ! no. nonzeros in matrix
         INTEGER, INTENT(IN) :: ptr(n) ! row pointers
         INTEGER, INTENT(IN) :: col(a_ne) ! column indices
-       ! TYPE (zd11_type), INTENT (INOUT) :: matrix
 ! The array weight is used to hold a weight on the vertices indicating 
 ! how many vertices from the finer graphs have been combined into the 
 ! current coarse graph vertex. 
@@ -4295,10 +4138,8 @@ INNER:    DO inn = 1, n
 ! End inner loop 
           END DO INNER
 ! Leave loop if inner loop has not found better partition 
-       !   write(*,*) evalc,evalo
           IF (evalc>=(1.0-1.0/(log(real(sumweight))**2.3))*evalo) EXIT
 ! Otherwise we reset evalo and go back to inner loop 
-         ! write(*,*) 'e',evalo,evalc,evalc/evalo
           evalo = evalc
 ! Recompute gains for this new partition 
 ! Compute gains for nodes in cutset 
@@ -5183,7 +5024,6 @@ INNER:    DO inn = 1, n
             END DO
 
 ! count the number of elements in i (including me):
-! if (i.eq.78) !!! write(*,*)'5699',pn - p1 + 1
             perm(i) = pn - p1 + 1
 
 ! ----------------------------------------------------------
@@ -5484,7 +5324,6 @@ INNER:    DO inn = 1, n
               ELSE
                 j = -ip(j)
               END IF
-           ! if (n.lt.51) write(*,*) 'jj',j,i
             END DO
 140         e = j
 ! ----------------------------------------------------------
@@ -5546,120 +5385,8 @@ INNER:    DO inn = 1, n
         pfree = maxmem
       END SUBROUTINE hamd
 
-      
-     SUBROUTINE hamd_both_old(a_n,a_ne,a_ptr,a_row,a_n1,a_n2,partition,iperm,&
-         a_weight,work)
-       INTEGER, INTENT(IN) :: a_n ! order of matrix being partitioned
-       INTEGER, INTENT(IN) :: a_ne ! no. entries in matrix being partitioned
-       INTEGER, INTENT(IN) :: a_ptr(a_n) ! col ptrs for matrix being partitioned
-       INTEGER, INTENT(IN) :: a_row(a_ne) ! row indices for matrix
-         ! being partitioned. 
-       INTEGER, INTENT(IN) :: a_n1 ! no. rows in partition 1
-       INTEGER, INTENT(IN) :: a_n2 ! no. rows in partition 2
-       INTEGER, INTENT(IN) :: partition(a_n) ! the partitions
-       INTEGER, INTENT(INOUT) :: iperm(a_n) ! maps current permuation to the 
-         ! column indices of the matrix whose ordering is being computed
-       INTEGER, INTENT(INOUT) :: a_weight(a_n) ! weights of vertices
-       INTEGER, INTENT(OUT) :: work(11*a_n + a_ne)
 
-
-       ! Local variables
-       INTEGER :: i,j
-       INTEGER :: extract_work ! pointers into work array for mask arrays
-       INTEGER :: hamd_perm ! pointer into work array for perm array
-       INTEGER :: hamd_work ! pointer into work array for hamd work array
-       INTEGER :: a_ptr_sub ! pointer into work for col ptrs of submatrix
-       INTEGER :: a_irn_sub ! pointer into work for irn array of submatrix
-       INTEGER :: rows_sub ! pointer into work for rows_sub array
-       INTEGER :: a_lirn_sub ! length of irn array of submatrix
-       INTEGER :: a_n_1 ! order of submatrix 1
-       INTEGER :: a_n_2 ! order of submatrix 2
-       INTEGER :: a_n_sep ! number entries in separator
-       INTEGER :: a_ne_sub ! number entries in submatrix
-       INTEGER :: len_a_row_sub ! used when extracting submatrices
-
-
-       ! Set orders of submatrices
-       a_n_1 = a_n - a_n2
-       a_n_2 = a_n - a_n1
-       a_n_sep = a_n - a_n1 - a_n2
-       
-
-       ! Set pointers into work array
-       hamd_perm = 0 ! length a_n
-       a_ptr_sub = hamd_perm + a_n ! length a_n
-       a_lirn_sub = a_ne + max(a_n_1,a_n_2) + 1
-       ! max(a_n_1,a_n_2) + 1 .le. a_n
-       a_irn_sub = a_ptr_sub + a_n ! length a_lirn_sub
-       rows_sub = a_irn_sub + a_lirn_sub ! length a_n
-       extract_work = rows_sub + a_n ! length a_n
-       hamd_work = rows_sub + a_n ! length 7*a_n
-
-
-       ! Form submatrix 1
-     !  IF (a_n1 .NE. 1) THEN
-       work(rows_sub+1:rows_sub+a_n1) = partition(1:a_n1)
-       work(rows_sub+a_n1+1:rows_sub+a_n_1) = partition(a_n1+a_n2+1:a_n)
-       len_a_row_sub = a_ne
-       call extract_matrix(a_n,a_ne,a_ptr,a_row,a_n1,a_n_sep,&
-        work(rows_sub+1:rows_sub+a_n_1),&
-        a_ne_sub,work(a_ptr_sub+1:a_ptr_sub+a_n_1),len_a_row_sub,&
-        work(a_irn_sub+1:a_irn_sub+a_ne),work(extract_work+1:extract_work+a_n))
-
-       ! Apply hamd
-       work(rows_sub+1:rows_sub+a_n1) = mc70_part1_flag
-       work(rows_sub+a_n1+1:rows_sub+a_n_1) = mc70_sep_flag
-       call hamd(a_n_1,a_ne_sub,a_lirn_sub,&
-         work(a_irn_sub+1:a_irn_sub+a_lirn_sub),&
-         work(a_ptr_sub+1:a_ptr_sub+a_n_1),work(rows_sub+1:rows_sub+a_n_1),&
-         work(hamd_perm+1:hamd_perm+a_n_1),work(hamd_work+1:hamd_work+7*a_n_1))
-      ! ELSE
-      !   work(hamd_perm+1) = 1
-      ! END IF
-
-       ! Overwrite first a_n1 entries of hamd_perm with first a_n1 entries 
-       ! that will form new iperm. Similarly, overwrite first a_n1 entries of 
-       !rows_sub with first a_n1 entries that will form new a_weight        
-       ! no longer need info in a_ptr
-       DO i = 1,a_n1
-          j = work(hamd_perm+i)
-            work(a_ptr_sub+i) = iperm(partition(j))
-            work(rows_sub+i) = a_weight(partition(j))
-       END DO
-       work(hamd_perm+1:hamd_perm+a_n1) = work(a_ptr_sub+1:a_ptr_sub+a_n1)
-
-       ! Build second submatrix
-       !IF (a_n2 .NE. 1) THEN
-       work(rows_sub+a_n1+1:rows_sub+a_n1+a_n_2) = partition(a_n1+1:a_n)
-       len_a_row_sub = a_ne
-       call extract_matrix(a_n,a_ne,a_ptr,a_row,a_n2,a_n_sep,&
-        work(rows_sub+a_n1+1:rows_sub+a_n1+a_n_2),&
-        a_ne_sub,work(a_ptr_sub+1:a_ptr_sub+a_n_2),len_a_row_sub,&
-        work(a_irn_sub+1:a_irn_sub+a_ne),work(extract_work+1:extract_work+a_n))
-       ! Apply hamd
-       work(rows_sub+a_n1+1:rows_sub+a_n1+a_n2) = mc70_part1_flag
-       work(rows_sub+a_n1+a_n2+1:rows_sub+a_n1+a_n_2) = mc70_sep_flag
-       call hamd(a_n_2,a_ne_sub,a_lirn_sub,&
-         work(a_irn_sub+1:a_irn_sub+a_lirn_sub),&
-         work(a_ptr_sub+1:a_ptr_sub+a_n_2),&
-         work(rows_sub+a_n1+1:rows_sub+a_n1+a_n_2),&
-         work(hamd_perm+a_n1+1:hamd_perm+a_n),&
-         work(hamd_work+1:hamd_work+7*a_n_2))
-      ! ELSE
-      !   work(hamd_perm+a_n1+1) = 1
-      ! END IF
-       DO i = 1,a_n_2
-          j = work(hamd_perm+a_n1+i)
-            work(a_ptr_sub+i+a_n1) = iperm(partition(a_n1+j))
-            work(rows_sub+i+a_n1) = a_weight(partition(a_n1+j))
-       END DO
-       iperm(a_n1+1:a_n) = work(a_ptr_sub+1+a_n1:a_ptr_sub+a_n)
-       iperm(1:a_n1) = work(hamd_perm+1:hamd_perm+a_n1)
-       a_weight(1:a_n) = work(rows_sub+1:rows_sub+a_n)
-
-     END SUBROUTINE hamd_both_old
-
-    SUBROUTINE hamd_both_old1(a_n,a_ne,a_ptr,a_row,a_n1,a_n2,partition,iperm,&
+    SUBROUTINE hamd_both(a_n,a_ne,a_ptr,a_row,a_n1,a_n2,partition,iperm,&
          a_weight,work)
        INTEGER, INTENT(IN) :: a_n ! order of matrix being partitioned
        INTEGER, INTENT(IN) :: a_ne ! no. entries in matrix being partitioned
@@ -5769,7 +5496,7 @@ INNER:    DO inn = 1, n
        iperm(1:a_n1) = work(hamd_perm+1:hamd_perm+a_n1)
        a_weight(1:a_n) = work(rows_sub+1:rows_sub+a_n)
 
-     END SUBROUTINE hamd_both_old1
+     END SUBROUTINE hamd_both
 
 
      SUBROUTINE extract_matrix(a_n,a_ne,a_ptr,a_row,a_n_part,a_n_sep,rows_sub,&
@@ -6178,1717 +5905,6 @@ INNER:    DO inn = 1, n
 
      END SUBROUTINE hamd_one
 
-     SUBROUTINE multilevel_partition(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
-          partition,a_n1,a_n2,a_weight_1,a_weight_2,a_weight_sep, &
-          control,info1,lwork,work,ml_max_levels)
-
-       INTEGER, INTENT(IN) :: a_n ! order of matrix being partitioned
-       INTEGER, INTENT(IN) :: a_ne ! no. entries in matrix being partitioned
-       INTEGER, INTENT(IN) :: a_ptr(a_n) ! col ptrs for matrix being 
-          !partitioned and, on return, for the extracted submatrix
-       INTEGER, INTENT(IN) :: a_row(a_ne) ! row indices for matrix
-       INTEGER, INTENT (IN) :: a_weight(a_n) ! weights associated with rows
-! of matrix (useful if matrix has already been compressed)
-       INTEGER, INTENT(IN) :: sumweight ! sum of entries in a_weight
-       INTEGER, INTENT (OUT) :: partition(a_n) ! computed partition
-       INTEGER, INTENT (OUT) :: a_n1 ! number of entries in partition 1
-       INTEGER, INTENT (OUT) :: a_n2 ! number of entries in partition 2
-       INTEGER, INTENT(OUT) :: a_weight_1,a_weight_2,a_weight_sep ! Weighted 
-             ! size of partitions and separator
-        TYPE (mc70_control), INTENT (IN) :: control
-        INTEGER, INTENT (IN) :: lwork ! length of work array: must be atleast
-           ! 9a_n + sumweight + a_ne/2
-        INTEGER, INTENT (OUT) :: work(lwork) ! work array
-        INTEGER, INTENT(INOUT) :: info1
-        INTEGER, INTENT(IN) :: ml_max_levels ! no. levels in the multilevel grid (default 10)
-
-        TYPE (mc70_multigrid) :: grid ! the multilevel of graphs (matrices)
-        TYPE (zd11_type), TARGET :: matrix
-        INTEGER :: i, inv1, inv2, ins
-        INTEGER :: mp
-        INTEGER :: mglevel_cur ! current level
-        INTEGER :: err, print_level ! printing
-        LOGICAL :: lerr
-        INTEGER :: st ! stat parameter
-
-        info1 = 0
-! Set up printing
-        IF (control%print_level<0) print_level = 0
-! The default is control%print_level = 0
-        IF (control%print_level==0) print_level = 1
-        IF (control%print_level==1) print_level = 2
-        IF (control%print_level>1) print_level = 3
-        mp = control%unit_diagnostics
-        IF (mp<0) print_level = 0
-! Set error controls
-        lerr = control%unit_error >= 0 .AND. print_level > 0
-        err = control%unit_error
-
-
-! construct the multigrid at this level
-        matrix%n = a_n
-        matrix%ne = a_ne
-        ALLOCATE (matrix%ptr(a_n+1),matrix%col(a_ne),matrix%val(a_ne),STAT=st)
-        IF (st/=0) info1 = mc70_err_memory_alloc
-        IF (info1<0) THEN
-          IF (lerr) CALL mc70_print_message(info1,err,' multilevel_partition')
-          RETURN
-        END IF
-        matrix%ptr(1:a_n) = a_ptr(1:a_n)
-        matrix%ptr(a_n+1) = a_ne+1
-        matrix%col(1:a_ne) = a_row(1:a_ne)
-        matrix%val(1:a_ne) = 1.0
-
-        grid%size = a_n
-        grid%level = 1
-        grid%graph => matrix
-        NULLIFY (grid%p)
-
-        ALLOCATE (grid%where(a_n),grid%row_wgt(a_n),STAT=st)
-        IF (st/=0) info1 = mc70_err_memory_alloc
-        IF (info1<0) THEN
-          IF (lerr) CALL mc70_print_message(info1,err,' multilevel_partition')
-          RETURN
-        END IF
-
-! Initialise row weights
-        grid%row_wgt(1:a_n) = a_weight(1:a_n)
-
-! initialise mglevel_cur to the maximum number of levels
-! allowed for this bisection
-        mglevel_cur = ml_max_levels
-           
-        CALL multilevel(grid,control,sumweight,mglevel_cur,mp,print_level,&
-           lwork,work,info1)
-
-        IF (info1/=0) THEN
-          IF (lerr) CALL mc70_print_message(info1,err,' multilevel_partition')
-          RETURN
-        END IF
-
-        inv1 = 1
-        inv2 = grid%part_div(1) + 1
-        ins = grid%part_div(1) + grid%part_div(2) + 1
-
-        a_weight_1 = 0
-        a_weight_2 = 0
-        a_weight_sep = 0
-        DO i = 1, a_n
-          SELECT CASE (grid%where(i))
-          CASE (mc70_part1_flag) 
-            partition(inv1) = i
-            inv1 = inv1 + 1
-            a_weight_1 = a_weight_1 + a_weight(i)
-          CASE (mc70_part2_flag) 
-            partition(inv2) = i
-            inv2 = inv2 + 1
-            a_weight_2 = a_weight_2 + a_weight(i)
-          CASE default
-            partition(ins) = i
-            ins = ins + 1
-            a_weight_sep = a_weight_sep + a_weight(i)
-          END SELECT
-        END DO
-
-        a_n1 = grid%part_div(1)
-        a_n2 = grid%part_div(2)
-
-! deallocate the finest level
-        CALL multigrid_deallocate_first(a_n,a_n,grid,info1)
-        IF (info1/=0) THEN
-          IF (lerr) CALL mc70_print_message(info1,err,' multilevel_partition')
-          RETURN
-        END IF
-
-        DEALLOCATE (matrix%ptr,matrix%col,STAT=st)
-        IF (st/=0) info1 = mc70_err_memory_dealloc
-        IF (info1<0) THEN
-          IF (lerr) CALL mc70_print_message(info1,err,' multilevel_partition')
-          RETURN
-        END IF
-
-      END SUBROUTINE multilevel_partition
-
-! ********************************************************
-
-! main subroutine for computing multilevel structure.
-! Offers heavy-edge collapsing and maximal independent vertex
-! set for coarsening. We will need to test out to see
-! which is better.
-
-      RECURSIVE SUBROUTINE multilevel(grid,control,sumweight,&
-          mglevel_cur,mp,print_level,lwork,work,info)
-
-        REAL (myreal_mc70), PARAMETER :: half = 0.5_myreal_mc70
-        REAL (myreal_mc70), PARAMETER :: one = 1.0_myreal_mc70
-
-! Arguments
-        TYPE (mc70_multigrid), INTENT (INOUT), TARGET :: grid ! this level
-!  of matrix (grid)
-        TYPE (mc70_control), INTENT (IN) :: control
-        INTEGER, INTENT (IN) :: sumweight ! sum of weights (unchanged between 
-                ! coarse and fine grid
-        INTEGER, INTENT(INOUT) :: mglevel_cur ! current grid level
-        INTEGER, INTENT (IN) :: mp, print_level ! diagnostic printing
-        INTEGER, INTENT (IN) :: lwork ! length of work array
-        INTEGER, INTENT(OUT) :: work(lwork) ! work array
-        INTEGER, INTENT(INOUT) :: info ! Error flag
-
-! Local variables
-        TYPE (mc70_multigrid), POINTER :: cgrid ! the coarse level grid
-        INTEGER :: cnvtx ! number of vertices (rows) in the coarse matrix
-        TYPE (zd11_type), POINTER :: p ! the coarse grid prolongator
-         
-        INTEGER, DIMENSION (:), POINTER :: fwhere ! partition on fine grid
-        INTEGER, DIMENSION (:), POINTER :: cwhere ! partition on coarse grid
-        TYPE (zd11_type), POINTER :: cgraph ! the coarse graph
-        TYPE (zd11_type), POINTER :: graph ! the fine graph
-        INTEGER, DIMENSION (:), POINTER :: row_wgt ! fine  
-! graph vertex weights
-        INTEGER, DIMENSION (:), POINTER :: crow_wgt ! coarse 
-! graph vertex weights
-        REAL (myreal_mc70) :: grid_rdc_fac_min ! min grid reduction factor
-        REAL (myreal_mc70) :: grid_rdc_fac_max ! max grid reduction factor
-        REAL (myreal_mc70) :: one1
-        INTEGER :: ml_switch ! controls when to stop coarsening
-        INTEGER :: partition_ptr,work_ptr,a_ne
-        INTEGER :: st ! stat parameter
-        INTEGER :: i, j,k,l,a_weight_1,a_weight_2,a_weight_sep,ref_method
-        INTEGER, ALLOCATABLE :: work1(:)
-!!!!!!!!!!!!!!!!!!!!!!!!!!!
-        info = 0
-        one1 = 1.0
-
-        ml_switch = max(2,control%ml_switch)
-        IF (print_level==3) CALL level_print(mp,'size of grid on level ', &
-          grid%level,' is ',real(grid%size,myreal_mc70))
-
-        grid_rdc_fac_min = max(0.01_myreal_mc70,control%ml_min_reduction)
-! max grid reduction factor must be at least half and at most one
-        grid_rdc_fac_max = max(half,control%ml_max_reduction)
-        grid_rdc_fac_max = min(one,grid_rdc_fac_max)
-
-! Test to see if this is either the last level or
-! if the matrix size too small
-!!!write(*,*) 'grid',grid%level,mglevel_cur, grid%size
-        IF (grid%level>=mglevel_cur .OR. grid%size<=ml_switch) THEN
-          NULLIFY (grid%coarse)
-          IF (print_level==3) CALL level_print(mp,'end of level ',grid%level)
-
-! coarsest level in multilevel so compute separator
-!!write(*,*) 'start 3520'
-
-         ! CALL coarse_separator(grid%graph%n,grid%graph,grid%row_wgt, &
-         !   grid%where,grid%part_div,control,info)
-          a_ne = grid%graph%ptr(grid%graph%n+1)-1
-
-          CALL mc70_coarse_partition(grid%graph%n,a_ne,grid%graph%ptr,&
-            grid%graph%col,grid%row_wgt,sumweight,&
-            grid%part_div(1),grid%part_div(2),grid%where,lwork,work,control,info)
-
-        
-          RETURN
-
-        END IF
-
-! Coarsest level not yet reached so carry on coarsening
-       IF (control%coarsen .GT. 0) THEN
-        CALL coarsen_hec(mp,print_level,grid,info)
-       ELSE
-        CALL coarsen_cn(mp,print_level,grid,info)
-       END IF
-        IF (info<0) RETURN
-
-        cgrid => grid%coarse
-        cnvtx = cgrid%size
-! allocate coarse grid quantities
-        ALLOCATE (cgrid%where(cnvtx),cgrid%row_wgt(cnvtx),STAT=st)
-        IF (st/=0) THEN
-          info = -1
-          RETURN
-        END IF
-
-! see if the grid reduction is achieved, if not, set the allowed
-! maximum level to current level and partition this level
-! deallocate the coarse grid quantities that haves been allocated so far
-        IF (real(cgrid%size)/real(grid%size)>grid_rdc_fac_max .OR. &
-            real(cgrid%size)/real(grid%size)<grid_rdc_fac_min .OR. cgrid%size<4) &
-            THEN
-
-          IF (print_level==3) THEN
-        !  IF (.true.) THEN
-            WRITE (mp,'(a,i10,a,f12.4,i4)') 'at level ', grid%level, &
-              ' further coarsening gives reduction factor', &
-              cgrid%size/real(grid%size)
-            WRITE (mp,'(a,i10)') 'current size = ', grid%size
-          END IF
-
-! set current grid level and recurse
-          mglevel_cur = grid%level
-
-          CALL multilevel(grid,control,sumweight,mglevel_cur,mp, &
-            print_level,lwork,work,info)
-
-          IF (info<0) RETURN
-
-          CALL multigrid_deallocate_last(cgrid,info)
-          IF (info<0) RETURN
-
-          RETURN
-
-        END IF
-
-! restriction ================
-
-! form the coarse grid graph and matrix
-! cmatrix = P^T*matrix = R*matrix
-        p => cgrid%p
-        graph => grid%graph
-        cgraph => cgrid%graph
-
-! get the coarse matrix
-!!write(*,*) 'start 3594'
-        CALL galerkin_graph(graph,p,cgraph,info)
-!!write(*,*) 'end 3594'
-        IF (info<0) RETURN
-
-        IF (cgrid%graph%ptr(cgrid%graph%n+1)-1 .ge. cgrid%graph%n*(cgrid%graph%n-1)) &
-            THEN
-          IF (print_level==3) THEN
-            WRITE (mp,'(a,i10,a,f12.4)') 'at level ', grid%level, &
-              ' further coarsening gives reduction factor', &
-              cgrid%size/real(grid%size)          
-            WRITE (mp,'(a,i10)') 'current size = ', grid%size
-            WRITE (mp,'(a,i10)') 'coarse size = ', cgrid%size
-          END IF
-
-! set current grid level and recurse
-          mglevel_cur = grid%level-1
-
-!!write(*,*) 'start 3568'
-          CALL multilevel(grid,control,sumweight,mglevel_cur,mp, &
-            print_level,lwork,work,info)
-!!write(*,*) 'end 3568'
-
-          IF (info<0) RETURN
-
-          CALL multigrid_deallocate_last(cgrid,info)
-
-          RETURN
-
-        END IF
-! row weight cw = R*w
-        row_wgt => grid%row_wgt
-        crow_wgt => cgrid%row_wgt
-        CALL mc65_matrix_multiply_vector(p,row_wgt,crow_wgt,info,trans=.TRUE.)
-        CALL multilevel(cgrid,control,sumweight,mglevel_cur,mp,&
-           print_level,lwork,work,info)
-
-! prolongation ================
-
-! injection of the order from coarse grid to the
-! fine grid, since cwhere(i) is the index of the
-! i-th vertex in the new ordering, the order
-! of this vertex should be where(i)
-! grid%where = P*order_on_coarse_grid
-! here P is a special matrix with only one non-zero entry per row
-        fwhere => grid%where
-        cwhere => cgrid%where
-        grid%part_div(1:2) = 0
-        CALL mc65_matrix_multiply_vector(p,cwhere,fwhere,info)
-
-        DO i = 1, size(fwhere)
-            IF (fwhere(i)==mc70_part1_flag) THEN
-              grid%part_div(1) = grid%part_div(1) + 1
-            ELSE
-              IF (fwhere(i)==mc70_part2_flag) THEN
-                grid%part_div(2) = grid%part_div(2) + 1
-              END IF
-            END IF
-        END DO
-        a_weight_1 = 0
-        a_weight_2 = 0
-        a_weight_sep = 0
-
-        ! Set partition
-        partition_ptr = 0
-        work_ptr = partition_ptr+grid%graph%n
-        i = 1
-        j = grid%part_div(1)+1
-        k = grid%part_div(1)+grid%part_div(2)+1
-        DO l = 1,grid%graph%n
-          SELECT CASE (grid%where(l))
-           CASE (mc70_part1_flag)
-            work(partition_ptr+i) = l
-            a_weight_1 = a_weight_1 + grid%row_wgt(l)
-            i = i+1
-           CASE (mc70_part2_flag)
-            work(partition_ptr+j) = l
-            a_weight_2 = a_weight_2 + grid%row_wgt(l)
-            j = j+1
-           CASE (mc70_sep_flag)
-            work(partition_ptr+k) = l
-            a_weight_sep = a_weight_sep + grid%row_wgt(l)
-            k = k+1
-          END SELECT
-        END DO
-         a_ne = grid%graph%ptr(grid%graph%n+1)-1
-         !  write(*,*) 'a_n1p =',grid%part_div(1),';'
-         !  write(*,*) 'a_n2p =',grid%part_div(2),';'
-         !  write(*,*) 'a_np =',grid%graph%n,';'
-         !  write(*,*) 'a_partp =[',work(partition_ptr+1:partition_ptr+grid%graph%n),'];'
-        
-       IF (a_weight_sep .GT. 0) THEN
-        ! Do not refine if separable graph
-        IF (lwork .LT. work_ptr+8*grid%graph%n+sumweight+a_ne/2) THEN
-         ALLOCATE (work1(8*grid%graph%n+sumweight+a_ne/2),stat = st)
-         IF (st/=0) THEN
-          info = mc70_err_memory_alloc
-          RETURN
-         END IF
-         IF (control%refinement .GE. 2) THEN
-              IF (min(a_weight_1,a_weight_2) + a_weight_sep .LT. &
-                  max(a_weight_1,a_weight_2) ) THEN
-                 ref_method = 2
-              ELSE
-                 ref_method = 1
-              END IF
-         ELSE  
-             IF (control%refinement .LT. 0) THEN
-                 ref_method = 0
-             ELSE
-              IF (control%refinement .EQ. 0) THEN
-                 ref_method = 1
-              ELSE
-                 ref_method = 2
-              END IF
-             END IF
-         END IF
-        
-         IF (ref_method .EQ. 0) THEN
-            CALL mc70_refine_max_flow(grid%graph%n,a_ne,grid%graph%ptr,&
-             grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
-             grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
-             work(partition_ptr+1:partition_ptr+grid%graph%n),&
-             work1(1:8*grid%graph%n+sumweight+a_ne/2),&
-             control) 
-          !  CALL mc70_refine(grid%graph%n,a_ne,grid%graph%ptr,&
-          !   grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
-          !   grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
-          !   work(partition_ptr+1:partition_ptr+grid%graph%n),&
-          !   work1(1:8*grid%graph%n+sumweight+a_ne/2),&
-          !   control,ref_method) 
-         ELSE
-
-          IF (ref_method .EQ. 1) THEN
-           IF (control%block) THEN
-            CALL mc70_refine_block_trim_new(grid%graph%n,a_ne,grid%graph%ptr,&
-             grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
-             grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
-             work(partition_ptr+1:partition_ptr+grid%graph%n),&
-             work1(1:8*grid%graph%n+sumweight+a_ne/2),&
-             control) 
-
-           ELSE
-            CALL mc70_refine_trim(grid%graph%n,a_ne,grid%graph%ptr,&
-             grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
-             grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
-             work(partition_ptr+1:partition_ptr+grid%graph%n),&
-             work1(1:8*grid%graph%n+sumweight+a_ne/2),&
-             control) 
-           END IF
-            CALL mc70_refine(grid%graph%n,a_ne,grid%graph%ptr,&
-             grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
-             grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
-             work(partition_ptr+1:partition_ptr+grid%graph%n),&
-             work1(1:8*grid%graph%n+sumweight+a_ne/2),&
-             control,ref_method) 
-         ELSE
-            CALL mc70_refine(grid%graph%n,a_ne,grid%graph%ptr,&
-             grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
-             grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
-             work(partition_ptr+1:partition_ptr+grid%graph%n),&
-             work1(1:8*grid%graph%n+sumweight+a_ne/2),&
-             control,ref_method) 
-            CALL mc70_refine_trim(grid%graph%n,a_ne,grid%graph%ptr,&
-             grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
-             grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
-             work(partition_ptr+1:partition_ptr+grid%graph%n),&
-             work1(1:8*grid%graph%n+sumweight+a_ne/2),&
-             control) 
-         END IF
-        END IF
-
-         DEALLOCATE (work1,stat = st)
-         IF (st/=0) THEN
-          info = mc70_err_memory_dealloc
-          RETURN
-         END IF
-        ELSE
-        
-         IF (control%refinement .GE. 2) THEN
-              IF (min(a_weight_1,a_weight_2)+a_weight_sep .LT. &
-                  max(a_weight_1,a_weight_2)) THEN
-                 ref_method = 2
-              ELSE
-                 ref_method = 1
-              END IF
-           ELSE  
-            IF (control%refinement .LT. 0) THEN
-                 ref_method = 0
-            ELSE
-             IF (control%refinement .EQ. 0) THEN
-                 ref_method = 1
-             ELSE
-                 ref_method = 2
-             END IF
-            END IF
-          END IF
-         IF (ref_method .LE. 0) THEN
-            CALL mc70_refine_max_flow(grid%graph%n,a_ne,grid%graph%ptr,&
-             grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
-             grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
-             work(partition_ptr+1:partition_ptr+grid%graph%n),&
-             work(work_ptr+1:work_ptr+8*grid%graph%n+sumweight+a_ne/2),&
-             control) 
-          !  CALL mc70_refine(grid%graph%n,a_ne,grid%graph%ptr,&
-          !   grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
-          !   grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
-          !   work(partition_ptr+1:partition_ptr+grid%graph%n),&
-          !   work(work_ptr+1:work_ptr+8*grid%graph%n+sumweight+a_ne/2),&
-          !   control,ref_method) 
-        ELSE
-         IF (ref_method .LE. 1) THEN
-           IF (control%block) THEN
-            CALL mc70_refine_block_trim_new(grid%graph%n,a_ne,grid%graph%ptr,&
-             grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
-             grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
-             work(partition_ptr+1:partition_ptr+grid%graph%n),&
-             work(work_ptr+1:work_ptr+8*grid%graph%n+sumweight+a_ne/2),&
-             control) 
-           ELSE
-            CALL mc70_refine_trim(grid%graph%n,a_ne,grid%graph%ptr,&
-             grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
-             grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
-             work(partition_ptr+1:partition_ptr+grid%graph%n),&
-             work(work_ptr+1:work_ptr+8*grid%graph%n+sumweight+a_ne/2),&
-             control) 
-
-           END IF
-            CALL mc70_refine(grid%graph%n,a_ne,grid%graph%ptr,&
-             grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
-             grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
-             work(partition_ptr+1:partition_ptr+grid%graph%n),&
-             work(work_ptr+1:work_ptr+8*grid%graph%n+sumweight+a_ne/2),&
-             control,ref_method) 
-         ELSE
-            CALL mc70_refine(grid%graph%n,a_ne,grid%graph%ptr,&
-             grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
-             grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
-             work(partition_ptr+1:partition_ptr+grid%graph%n),&
-             work(work_ptr+1:work_ptr+8*grid%graph%n+sumweight+a_ne/2),&
-             control,ref_method) 
-            CALL mc70_refine_trim(grid%graph%n,a_ne,grid%graph%ptr,&
-             grid%graph%col,grid%row_wgt,sumweight,grid%part_div(1),&
-             grid%part_div(2),a_weight_1,a_weight_2,a_weight_sep,&
-             work(partition_ptr+1:partition_ptr+grid%graph%n),&
-             work(work_ptr+1:work_ptr+8*grid%graph%n+sumweight+a_ne/2),&
-             control) 
-         END IF
-        END IF
-       END IF
-      END IF
-
-        !   write(*,*) 'a_n1r =',grid%part_div(1),';'
-        !   write(*,*) 'a_n2r =',grid%part_div(2),';'
-        !   write(*,*) 'a_nr =',grid%graph%n,';'
-        !   write(*,*) 'a_partr =[',work(partition_ptr+1:partition_ptr+grid%graph%n),'];'
-
-        DO i = 1,grid%part_div(1)
-          j = work(partition_ptr+i)
-          grid%where(j) = mc70_part1_flag
-        END DO
-        DO i = grid%part_div(1)+1,grid%part_div(1)+grid%part_div(2)
-          j = work(partition_ptr+i)
-          grid%where(j) = mc70_part2_flag
-        END DO
-        DO i = grid%part_div(1)+grid%part_div(2)+1,grid%graph%n
-          j = work(partition_ptr+i)
-          grid%where(j) = mc70_sep_flag
-        END DO
-
-        IF (info<0) RETURN
-
-        IF (print_level==3) CALL level_print(mp,' after post smoothing ', &
-          grid%level)
-
-! deallocate the previous level
-        CALL multigrid_deallocate(cgrid,info)
-
-      END SUBROUTINE multilevel
-
-!***************************************************************
-! ---------------------------------------------------
-! mc70_partition matrix
-! ---------------------------------------------------
-! Partition the matrix and if one (or more) of the generated submatrices is 
-! small enough, apply halo amd
-
-      SUBROUTINE mc70_coarse_partition(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,&
-         a_n2,where1,lwork,work,control,info)
-
-        INTEGER, INTENT(IN) :: a_n ! dimension of subproblem ND is applied to
-        INTEGER, INTENT(IN) :: a_ne ! no. nonzeros of subproblem
-        INTEGER, INTENT(INOUT) :: a_ptr(a_n) ! On input a_ptr(i) contains 
-             ! position in a_row that entries for column i start. This is then 
-             ! used to hold positions for submatrices after partitioning
-        INTEGER, INTENT(INOUT) :: a_row(a_ne) ! On input a_row contains row 
-             ! indices of the non-zero rows. Diagonal entries have been removed
-             ! and the matrix expanded.This is then used to hold row indices for
-             ! submatrices after partitioning
-        INTEGER, INTENT(INOUT) :: a_weight(a_n) ! On input a_weight(i) contains 
-             ! the weight of column i. This is then used to hold the weights for
-             ! the submatrices after partitioning.
-        INTEGER, INTENT(IN) :: sumweight ! Sum entries in a_weight. Unchanged.
-        INTEGER, INTENT(OUT) :: a_n1, a_n2 ! size of the two submatrices
-        INTEGER, INTENT(OUT) :: where1(a_n) ! Computed partition
-        INTEGER, INTENT(IN) :: lwork
-        INTEGER, INTENT(OUT) :: work(lwork)
-        TYPE (mc70_control), INTENT(IN) :: control 
-        INTEGER, INTENT(INOUT) :: info
-      !  REAL (myreal_mc70), OPTIONAL, INTENT(OUT) :: real_work(a_n)
-
-! ---------------------------------------------
-! Local variables
-        INTEGER :: unit_diagnostics ! unit on which to print diagnostics
-        LOGICAL :: printi, printd, use_multilevel
-        INTEGER :: partition_ptr ! pointer into work array
-        INTEGER :: work_ptr ! pointer into work array
-        INTEGER :: partition_method
-        INTEGER :: i,j,st,nstrt,nend
-        INTEGER :: a_weight_1,a_weight_2,a_weight_sep, ref_method
-        INTEGER, ALLOCATABLE :: work1(:)
-        REAL(myreal_mc70) :: dummy
-
-! ---------------------------------------------
-! Printing levels
-        unit_diagnostics = control%unit_diagnostics
-        printi = (control%print_level==1 .AND. unit_diagnostics>=0)
-        printd = (control%print_level>=2 .AND. unit_diagnostics>=0)
- 
-        IF (printi .or. printd) THEN
-          WRITE (unit_diagnostics,'(a)') ' '
-          WRITE (unit_diagnostics,'(a)') 'Start finding a partition'
-        END IF
-
-        ! Find the partition
-        IF (control%partition_method .LE. 1) THEN
-          partition_method = 1
-        ELSE
-          partition_method = 2
-        END IF
-         nstrt = -1
-         nend = -1
-
-        partition_ptr = 0 ! length a_n
-        work_ptr = partition_ptr + a_n ! max length needed 11*a_n+a_ne
-        IF (lwork .LT. work_ptr+9*a_n+sumweight+a_ne/2) THEN
-         ALLOCATE (work1(9*a_n+sumweight+a_ne/2),stat = st)
-         IF (st/=0) THEN
-          info = mc70_err_memory_alloc
-          RETURN
-         END IF
-
-   
-         SELECT CASE (partition_method)
-         CASE (1)
-           ! Ashcraft method
-           use_multilevel = .false.
-           CALL mc70_ashcraft(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,2,nstrt,&
-               nend,a_n1,a_n2,a_weight_1,a_weight_2,a_weight_sep,&
-               work(partition_ptr+1:partition_ptr+a_n),&
-               work1(1:9*a_n+sumweight+a_ne/2),control,info,dummy,&
-               use_multilevel)
-           !  write(*,*) 'dd',a_n1,a_n2,a_n
-         CASE (2)
-           ! Level set method
-           use_multilevel = .false.
-           CALL mc70_level_set(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,2,a_n1,a_n2,&
-               a_weight_1,a_weight_2,a_weight_sep,&
-               work(partition_ptr+1:partition_ptr+a_n), &
-               work1(1:4*a_n),control,info,dummy,use_multilevel)
-         END SELECT
-
-         IF (a_n1 .NE. 0 .AND. a_n2 .NE. 0 .AND. a_n .GT. 3) THEN
-           IF (a_n1+a_n2 .LT. a_n) THEN
-          ! Refine the partition
-           IF (control%refinement .GE. 2) THEN
-              IF (min(a_weight_1,a_weight_2) + a_weight_sep .LT. &
-               max(a_weight_1,a_weight_2)) THEN
-                 ref_method = 2
-              ELSE
-                 ref_method = 1
-              END IF
-           ELSE
-             IF (control%refinement .LT. 0) THEN
-                 ref_method = 0
-             ELSE
-              IF (control%refinement .LT. 1) THEN
-                 ref_method = 1
-              ELSE
-                 ref_method = 2
-              END IF
-             END IF
-           END IF
-          IF (ref_method .EQ. 0) THEN
-             CALL mc70_refine_max_flow(a_n,a_ne,a_ptr,a_row,a_weight,&
-               sumweight,a_n1,a_n2,&
-               a_weight_1,a_weight_2,a_weight_sep,&
-               work(partition_ptr+1:partition_ptr+a_n),&
-               work1(1:8*a_n+sumweight+a_ne/2),control) 
-           ! CALL mc70_refine(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,a_n2,&
-           !    a_weight_1,a_weight_2,a_weight_sep,&
-           !    work(partition_ptr+1:partition_ptr+a_n),&
-           !    work1(1:8*a_n+sumweight+a_ne/2),control,ref_method) 
-          ELSE
-           IF (ref_method .EQ. 1) THEN
-            IF (control%block) THEN
-             CALL mc70_refine_block_trim_new(a_n,a_ne,a_ptr,a_row,a_weight,&
-               sumweight,a_n1,a_n2,&
-               a_weight_1,a_weight_2,a_weight_sep,&
-               work(partition_ptr+1:partition_ptr+a_n),&
-               work1(1:8*a_n+sumweight+a_ne/2),control) 
-            ELSE
-
-             CALL mc70_refine_trim(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,a_n2,&
-               a_weight_1,a_weight_2,a_weight_sep,&
-               work(partition_ptr+1:partition_ptr+a_n),&
-               work1(1:8*a_n+sumweight+a_ne/2),control) 
-            END IF
-            CALL mc70_refine(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,a_n2,&
-               a_weight_1,a_weight_2,a_weight_sep,&
-               work(partition_ptr+1:partition_ptr+a_n),&
-               work1(1:8*a_n+sumweight+a_ne/2),control,ref_method) 
-           ELSE
-           CALL mc70_refine(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,a_n2,&
-               a_weight_1,a_weight_2,a_weight_sep,&
-               work(partition_ptr+1:partition_ptr+a_n),&
-               work1(1:8*a_n+sumweight+a_ne/2),control,ref_method) 
-
-            CALL mc70_refine_trim(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,a_n2,&
-               a_weight_1,a_weight_2,a_weight_sep,&
-               work(partition_ptr+1:partition_ptr+a_n),&
-               work1(1:8*a_n+sumweight+a_ne/2),control) 
-           END IF
-          END IF
-
-           END IF  
-         ELSE
-          GOTO 10
-         END IF
-
-         DO i = 1,a_n1
-          j = work(partition_ptr+i)
-          where1(j) = mc70_part1_flag
-         END DO
-         DO i = a_n1+1,a_n1+a_n2
-          j = work(partition_ptr+i)
-          where1(j) = mc70_part2_flag
-         END DO
-         DO i = a_n1+a_n2+1,a_n
-          j = work(partition_ptr+i)
-          where1(j) = mc70_sep_flag
-         END DO
-         DEALLOCATE (work1,stat = st)
-         IF (st/=0) THEN
-          info = mc70_err_memory_alloc
-          RETURN
-         END IF
-
-        ELSE
-         SELECT CASE (partition_method)
-         CASE (1)
-           ! Ashcraft method
-           use_multilevel = .false.
-           CALL mc70_ashcraft(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,2,&
-               nstrt,nend,a_n1,&
-               a_n2,a_weight_1,a_weight_2,a_weight_sep,&
-               work(partition_ptr+1:partition_ptr+a_n),&
-               work(work_ptr+1:work_ptr+9*a_n+sumweight+a_ne/2),control,info,&
-               dummy,use_multilevel)
-           !  write(*,*) 'dd',a_n1,a_n2,a_n
-         CASE (2)
-           ! Level set method
-           CALL mc70_level_set(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,2,a_n1,a_n2,&
-               a_weight_1,a_weight_2,a_weight_sep,&
-               work(partition_ptr+1:partition_ptr+a_n), &
-               work(work_ptr+1:work_ptr+4*a_n),control,info,dummy,use_multilevel)
-         END SELECT
-
-         IF (a_n1 .NE. 0 .AND. a_n2 .NE. 0 .AND. a_n .GT. 3) THEN
-           IF (a_n1+a_n2 .LT. a_n) THEN
-
-           IF (control%refinement .GE. 2) THEN
-              IF (min(a_weight_1,a_weight_2) + a_weight_sep .LT. &
-               max(a_weight_1,a_weight_2)) THEN
-                 ref_method = 2
-              ELSE
-                 ref_method = 1
-              END IF
-           ELSE
-             IF (control%refinement .LT. 0) THEN
-                 ref_method = 0
-             ELSE
-              IF (control%refinement .LT. 1) THEN
-                 ref_method = 1
-              ELSE
-                 ref_method = 2
-              END IF
-             END IF
-           END IF
-           IF (ref_method .EQ. 0) THEN
-             CALL mc70_refine_max_flow(a_n,a_ne,a_ptr,a_row,a_weight,&
-               sumweight,a_n1,a_n2,&
-               a_weight_1,a_weight_2,a_weight_sep,&
-               work(partition_ptr+1:partition_ptr+a_n),&
-               work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control) 
-           !  CALL mc70_refine(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,a_n2,&
-           !    a_weight_1,a_weight_2,a_weight_sep,&
-           !    work(partition_ptr+1:partition_ptr+a_n),&
-           !    work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control,ref_method) 
-           ELSE
-           IF (ref_method .EQ. 1) THEN
-            IF (control%block) THEN
-             CALL mc70_refine_block_trim_new(a_n,a_ne,a_ptr,a_row,a_weight,&
-               sumweight,a_n1,a_n2,&
-               a_weight_1,a_weight_2,a_weight_sep,&
-               work(partition_ptr+1:partition_ptr+a_n),&
-               work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control) 
-            ELSE
-
-             CALL mc70_refine_trim(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,&
-               a_n1,a_n2,a_weight_1,a_weight_2,a_weight_sep,&
-               work(partition_ptr+1:partition_ptr+a_n),&
-               work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control) 
-            END IF
-             CALL mc70_refine(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,a_n2,&
-               a_weight_1,a_weight_2,a_weight_sep,&
-               work(partition_ptr+1:partition_ptr+a_n),&
-               work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control,ref_method) 
-           ELSE
-           CALL mc70_refine(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,a_n2,&
-               a_weight_1,a_weight_2,a_weight_sep,&
-               work(partition_ptr+1:partition_ptr+a_n),&
-               work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control,ref_method) 
-            CALL mc70_refine_trim(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,a_n2,&
-               a_weight_1,a_weight_2,a_weight_sep,&
-               work(partition_ptr+1:partition_ptr+a_n),&
-               work(work_ptr+1:work_ptr+8*a_n+sumweight+a_ne/2),control) 
-
-           END IF
-          END IF
-
-           END IF  
-         ELSE
-          GOTO 10
-         END IF
-
-         DO i = 1,a_n1
-          j = work(partition_ptr+i)
-          where1(j) = mc70_part1_flag
-         END DO
-         DO i = a_n1+1,a_n1+a_n2
-          j = work(partition_ptr+i)
-          where1(j) = mc70_part2_flag
-         END DO
-         DO i = a_n1+a_n2+1,a_n
-          j = work(partition_ptr+i)
-          where1(j) = mc70_sep_flag
-         END DO
-        END IF
- 
-        IF (printi .or. printd) THEN
-          WRITE (unit_diagnostics,'(a)') ' '
-          WRITE (unit_diagnostics,'(a)') 'Partition found'
-        END IF
-        GOTO 20
-
-10      IF (printi .or. printd) THEN
-          WRITE (unit_diagnostics,'(a)') ' '
-          WRITE (unit_diagnostics,'(a)') 'No partition found'
-        END IF
-
-20        info = 0
-        IF (printi .or. printd) THEN
-          CALL mc70_print_message(info,unit_diagnostics, &
-            'mc70_partition')
-        END IF
-        RETURN
-      
-      END SUBROUTINE mc70_coarse_partition
-
-
-! *****************************************************************
-      SUBROUTINE multigrid_deallocate(grid,info)
-! deallocate a grid (at given level between last and first)
-        TYPE (mc70_multigrid), POINTER :: grid
-        INTEGER :: st, info, info65
-
-        CALL mc65_matrix_destruct(grid%graph,info65)
-        IF (info65/=0) THEN
-          info = mc70_err_memory_dealloc
-          RETURN
-        END IF
-
-        CALL mc65_matrix_destruct(grid%p,info65)
-        IF (info65/=0) THEN
-          info = mc70_err_memory_dealloc
-          RETURN
-        END IF
-
-        DEALLOCATE (grid%graph,grid%p,grid%where,grid%row_wgt,STAT=st)
-        IF (st/=0) THEN
-          info = mc70_err_memory_dealloc
-          RETURN
-        END IF
-
-        DEALLOCATE (grid,STAT=st)
-        IF (st/=0) THEN
-          info = mc70_err_memory_dealloc
-          RETURN
-        END IF
-
-      END SUBROUTINE multigrid_deallocate
-
-! *****************************************************************
-      SUBROUTINE multigrid_deallocate_last(grid,info)
-
-! deallocate a grid (at the last level). In this case the matrix grid%graph
-! has not been formed yet
-        TYPE (mc70_multigrid), POINTER :: grid
-        INTEGER, INTENT (INOUT) :: info
-
-
-        INTEGER :: ierr
-
-        CALL mc65_matrix_destruct(grid%p,ierr)
-        IF (ierr/=0) THEN
-          info = mc70_err_memory_dealloc
-          RETURN
-        END IF
-
-        DEALLOCATE (grid%graph,grid%p,grid%where,grid%row_wgt,STAT=ierr)
-        IF (ierr/=0) THEN
-          info = mc70_err_memory_dealloc
-          RETURN
-        END IF
-
-        DEALLOCATE (grid,STAT=ierr)
-        IF (ierr/=0) THEN
-          info = mc70_err_memory_dealloc
-          RETURN
-        END IF
-
-      END SUBROUTINE multigrid_deallocate_last
-! *****************************************************************
-      SUBROUTINE multigrid_deallocate_first(nvtx,n,grid,info)
-! deallocate a grid (at the first level). In this case the matrix grid%p
-! does not exist
-        TYPE (mc70_multigrid) :: grid
-        INTEGER, INTENT (INOUT) :: info
-        INTEGER :: n, nvtx
-        INTEGER :: ierr
-
-        IF (nvtx/=n) THEN
-          CALL mc65_matrix_destruct(grid%graph,ierr)
-          IF (ierr/=0) THEN
-            info = mc70_err_memory_dealloc
-            RETURN
-          END IF
-        END IF
-
-! in subroutine front, grid%graph is not allocated but is pointed to the
-! finest level graph. so no need to deallocate
-        NULLIFY (grid%graph)
-        DEALLOCATE (grid%where,grid%row_wgt,STAT=ierr)
-        IF (ierr/=0) info = mc70_err_memory_dealloc
-
-      END SUBROUTINE multigrid_deallocate_first
-
-!***************************************************************
-      SUBROUTINE coarsen_hec(mp,print_level,grid,info)
-! coarsen the grid using heavy-edge collapsing and set up the
-! coarse grid equation, the prolongator and restrictor
-
-        INTEGER, INTENT (IN) :: mp, print_level
-        INTEGER, INTENT (INOUT) :: info
-        TYPE (mc70_multigrid), INTENT (INOUT), TARGET :: grid
-        TYPE (mc70_multigrid), POINTER :: cgrid
-
-        ALLOCATE (cgrid)
-
-        cgrid%fine => grid
-        grid%coarse => cgrid
-
-        IF (print_level==3) CALL level_print(mp,'before coarsening', &
-          grid%level)
-
-! find the prolongator
-        CALL prolng_heavy_edge(grid,info)
-        
-
-        IF (print_level==3) CALL level_print(mp,'after coarsening ', &
-          grid%level)
-
-        cgrid%level = grid%level + 1
-
-      END SUBROUTINE coarsen_hec
-
-
-!***************************************************************
-      SUBROUTINE coarsen_cn(mp,print_level,grid,info)
-! coarsen the grid using common neighbours collapsing and set up the
-! coarse grid equation, the prolongator and restrictor
-
-        INTEGER, INTENT (IN) :: mp, print_level
-        INTEGER, INTENT (INOUT) :: info
-        TYPE (mc70_multigrid), INTENT (INOUT), TARGET :: grid
-        TYPE (mc70_multigrid), POINTER :: cgrid
-
-        ALLOCATE (cgrid)
-
-        cgrid%fine => grid
-        grid%coarse => cgrid
-
-        IF (print_level==3) CALL level_print(mp,'before coarsening', &
-          grid%level)
-
-! find the prolongator
-        CALL prolng_common_neigh(grid,info)
-        
-
-        IF (print_level==3) CALL level_print(mp,'after coarsening ', &
-          grid%level)
-
-        cgrid%level = grid%level + 1
-
-      END SUBROUTINE coarsen_cn
-
-!********************************************
-      SUBROUTINE prolng_heavy_edge(grid,info)
-
-!    calculate the prolongator for heavy-edge collapsing:
-!    match the vertices of the heaviest edges
-
-        INTEGER, INTENT (INOUT) :: info
-! input fine grid
-        TYPE (mc70_multigrid), INTENT (INOUT) :: grid
-
-! coarse grid based on the fine grid
-        TYPE (mc70_multigrid), POINTER :: cgrid
-
-! the fine grid row connectivity graph
-        TYPE (zd11_type), POINTER :: graph
-
-! the coarse grid prolongator
-        TYPE (zd11_type), POINTER :: p
-
-! the number of fine and coarse grid vertices
-        INTEGER :: nvtx, cnvtx
-
-! working variables
-        INTEGER :: v, u, j, i, k, st
-        INTEGER :: nz
-
-        INTEGER, POINTER, DIMENSION (:) :: the_row
-        REAL (myreal_mc70), POINTER, DIMENSION (:) :: the_row_val
-
-! whether a vertex is matched already
-        INTEGER, PARAMETER :: unmatched = -1
-
-! matching status of each vertex
-        INTEGER, POINTER, DIMENSION (:) :: match
-
-! maximum weight and index of edges connected to the current vertex
-        REAL (myreal_mc70) :: maxwgt
-        INTEGER :: maxind
-
-! order of which vertex is visited for matching
-        INTEGER, ALLOCATABLE, DIMENSION (:) :: order
-        INTEGER, ALLOCATABLE, DIMENSION (:) :: nrow
-
-! allocate the prolongation matrix pointers
-        cgrid => grid%coarse
-        graph => grid%graph
-        ALLOCATE (cgrid%p)
-
-! allocate the graph and matrix pointer and the mincut pointer
-! so that everything is defined
-        ALLOCATE (cgrid%graph)
-
-        p => cgrid%p
-        nvtx = graph%n
-
-! prolongator start here ================================
-
-! initialise the matching status and randomly permute the vertex order
-        ALLOCATE (match(nvtx),order(nvtx),nrow(grid%size),STAT=st)
-        IF (st/=0) THEN
-          info = mc70_err_memory_alloc
-          RETURN
-        END IF
-        match = unmatched
-
-        DO i = 1, nvtx
-          order(i) = i
-        END DO
-
-! loop over each vertex and match along the heaviest edge
-        cnvtx = 0
-        nz = 0
-        nrow = 0
-        DO i = 1, nvtx
-          v = order(i)
-! If already matched, next vertex please
-          IF (match(v)/=unmatched) CYCLE
-! access the col. indices of row v
-          CALL mc65_matrix_getrow(graph,v,the_row)
-! access the entry values of row v
-          CALL mc65_matrix_getrowval(graph,v,the_row_val)
-          maxwgt = -huge(0.0_myreal_mc70)
-! in the case no match is found then match itself
-          maxind = v
-! Loop over entries in row v
-          DO j = 1, size(the_row)
-! u is col index of en entry in row v (so u is neighbor of v)
-            u = the_row(j)
-! heavy edge matching
-! if u is unmatched and value of the entry in col. u is greater
-! than maxwgt, select u as the matching.
-            IF (match(u)==unmatched .AND. maxwgt<abs(the_row_val(j))) THEN
-              maxwgt = abs(the_row_val(j))
-              maxind = u
-            END IF
-          END DO
-! the neighbor with heaviest weight
-          match(v) = maxind
-! mark maxind as having been matched
-          match(maxind) = v
-! increase number of vertices in coarse graph by 1
-          cnvtx = cnvtx + 1
-! construct the prolongation matrix: find vertex v and maxind is linked
-! with the coarse grid vertex cnvtx
-          nz = nz + 1
-          nrow(v) = nrow(v) + 1
-          IF (maxind/=v) THEN
-            nz = nz + 1
-            nrow(maxind) = nrow(maxind) + 1
-          END IF
-        END DO
-
-! storage allocation for col. indices and values of prolongation
-! matrix P (order nvtx * cnvtx)
-        CALL mc65_matrix_construct(p,nvtx,nz,info,n=cnvtx,type='general')
-        p%val = 0.0_myreal_mc70
-
-! Set column pointers for P
-        p%ptr(1) = 1
-        DO i = 1, nvtx
-          p%ptr(i+1) = p%ptr(i) + nrow(i)
-        END DO
-
-! the row counter: nothing in matrix P filled yet
-        nrow = 0
-
-! Now fill in entries of matrix P
-        match = unmatched
-! loop over each vertex and match along the heaviest edge
-        cnvtx = 0
-        DO i = 1, nvtx
-          v = order(i)
-! if already matched, next vertex please
-          IF (match(v)/=unmatched) CYCLE
-          CALL mc65_matrix_getrow(graph,v,the_row)
-          CALL mc65_matrix_getrowval(graph,v,the_row_val)
-          maxwgt = -huge(0.0_myreal_mc70)
-! in the case no match is found then match itself
-          maxind = v
-          DO j = 1, size(the_row)
-            u = the_row(j)
-! heavy edge matching
-            IF (match(u)==unmatched .AND. maxwgt<abs(the_row_val(j))) THEN
-              maxwgt = abs(the_row_val(j))
-              maxind = u
-            END IF
-          END DO
-! the neighbor with heaviest weight
-          match(v) = maxind
-          match(maxind) = v
-          cnvtx = cnvtx + 1
-! construct the prolongation matrix: vertex v and maxind are linked
-! with the coarse grid vertex cnvtx
-! k points to start of row v and now(v) holds number of
-! entries in row v that have been filled (so k + nrow(v) is
-! first free entry in row v)
-          k = p%ptr(v)
-          p%col(k+nrow(v)) = cnvtx
-          p%val(k+nrow(v)) = 1.0_myreal_mc70
-          nrow(v) = nrow(v) + 1
-
-          IF (maxind/=v) THEN
-            k = p%ptr(maxind)
-            p%col(k+nrow(maxind)) = cnvtx
-            p%val(k+nrow(maxind)) = 1.0_myreal_mc70
-            nrow(maxind) = nrow(maxind) + 1
-          END IF
-
-        END DO
-
-! deallocate the match pointer for vertices
-        DEALLOCATE (match,STAT=st)
-        IF (st/=0) THEN
-          info = mc70_err_memory_dealloc
-          RETURN
-        END IF
-
-        DEALLOCATE (order,nrow,STAT=st)
-        IF (st/=0) THEN
-          info = mc70_err_memory_dealloc
-          RETURN
-        END IF
-
-! prolongator end
-! size of coarse grid
-        cgrid%size = cnvtx
-
-! allocate coarse grid quantities
-        ALLOCATE (cgrid%where(cnvtx),cgrid%row_wgt(cnvtx),STAT=st)
-        IF (st/=0) info = mc70_err_memory_alloc
-
-      END SUBROUTINE prolng_heavy_edge
-
-!*******************************************************************
-
-      subroutine prolng_common_neigh(grid,ierr)
-
-!    calculate the prolongator:
-!    match the vertices of with most neighbours in common
-
-      integer,  intent(inout) :: ierr
-! input fine grid
-      type (mc70_multigrid), intent (inout) :: grid
-
-! coarse grid based on the fine grid
-      type (mc70_multigrid), pointer :: cgrid
-
-! the fine grid row connectivity graph
-      type (zd11_type), pointer :: graph
-
-! the coarse grid prolongator
-      type (zd11_type), pointer :: p
-
-! the number of fine and coarse grid vertices
-      integer :: nvtx,cnvtx
-
-! working variables
-      integer :: v,u,w,j,i,k,st
-
-      integer, pointer, dimension (:) :: the_row
-      integer, pointer, dimension (:) :: row_u
-
-! whether a vertex is matched already
-      integer, parameter :: unmatched = -1
-
-! matching status of each vertex
-      integer, pointer, dimension (:) :: match
-! flag array to flag up neighbours of a  node
-      integer, pointer, dimension (:) :: flag
-
-! maximum no. neighbours and index of edges connected to the current vertex
-      integer :: max_neigh, maxind, num
-
-! order of which vertex is visited for matching
-!      integer, allocatable, dimension (:) :: order ! this is not used.
-      integer, allocatable, dimension (:) :: nrow
-
-      integer :: info
-      integer :: nz
-
-! allocate the prolongation matrix pointers
-      cgrid => grid%coarse
-      graph => grid%graph
-      allocate(cgrid%p)
-
-! allocate the graph and matrix pointer and the mincut pointer
-! so that everything is defined
-      allocate(cgrid%graph)
-
-      p => cgrid%p
-      nvtx = graph%n
-
-! prolongator start here ================================
-
-! initialise the matching status
-      allocate(match(nvtx),flag(nvtx),stat = st)
-      if (st /= 0) then
-         ierr = mc70_err_memory_alloc
-         return
-      end if
-      match(1:nvtx) = unmatched
-      flag(1:nvtx) = 0
-
-! randomly permute the vertex order
-   !   allocate (order(nvtx),stat=st)
-   !   if (st /= 0) then
-   !      ierr = mc70_err_memory_alloc
-   !      return
-   !   end if
-   !   do i = 1,nvtx
-   !      order(i) = i ! we do not use random permutation
-   !   end do
-
-      allocate (nrow(grid%size),stat=st)
-      if (st /= 0) then
-         ierr = mc70_err_memory_alloc
-         return
-      end if
-
-! loop over each vertex and match based on number of neighbours in common
-      cnvtx = 0
-      nz = 0
-      nrow(1:grid%size) = 0
-      do i = 1, nvtx
-    !   v = order(i)
-        v = i
-! If already matched, next vertex please
-        if (match(v) /= unmatched) cycle
-! access the col. indices of row v
-        call mc65_matrix_getrow(graph,v,the_row)
-
-! in the case no match is found then match itself
-        maxind = v
-! Loop over entries in row v and set flag for each entry
-        flag(v) = i
-        do j = 1, size(the_row)
-! u is col index of en entry in row v (so u is neighbor of v)
-           u = the_row(j)
-           flag(u) = i
-         end do
-! For each unmatched neighbour of v, count the number of
-! neighbours it has in common with v
-        max_neigh = 0
-        do j = 1, size(the_row)
-           u = the_row(j)
-! cycle is u is already matched
-           if (match(u) /= unmatched) cycle
-           call mc65_matrix_getrow(graph,v,row_u)
-           num = 0
-           do k = 1,size(row_u)
-              w = row_u(k)
-              if (flag(w) == i) num = num + 1
-           end do
-           if (num > max_neigh) then
-              max_neigh = num
-              maxind = u
-           end if
-        end do
-
-! the neighbor with largest number of neighbours in common with v
-        match(v) = maxind
-! mark maxind as having been matched
-        match(maxind) = v
-! increase number of vertices in coarse graph by 1
-        cnvtx = cnvtx + 1
-! construct the prolongation matrix: find vertex v and maxind is linked
-! with the coarse grid vertex cnvtx
-        nz = nz + 1
-        nrow(v) = nrow(v) + 1
-        if (maxind /= v) then
-           nz = nz + 1
-           nrow(maxind) = nrow(maxind) + 1
-        end if
-      end do
-
-! storage allocation for col. indices and values of prolongation
-! matrix P (order nvtx * cnvtx)
-      call mc65_matrix_construct(p,nvtx,nz,info,n=cnvtx,type = 'general')
-      if (info < 0) then
-         ierr = info
-         return
-      end if
-      p%val = 0.0_myreal_mc70
-
-! Set column pointers for P
-      p%ptr(1) = 1
-      do i = 1,nvtx
-         p%ptr(i+1) = p%ptr(i) + nrow(i)
-      end do
-
-! the row counter: nothing in matrix P filled yet
-      nrow(1:grid%size) = 0
-
-! Now fill in entries of matrix P
-      match(1:nvtx) = unmatched
-      flag(1:nvtx) = 0
-! loop over each vertex and match based on number of neighbours in common
-      cnvtx = 0
-      do i = 1,nvtx
-    !   v = order(i)
-        v = i
-! if already matched, next vertex please
-        if (match(v) /= unmatched) cycle
-        call mc65_matrix_getrow(graph,v,the_row)
-
-! in the case no match is found then match itself
-        maxind = v
-! Loop over entries in row v and set flag for each entry
-        flag(v) = i
-        do j = 1, size(the_row)
-! u is col index of en entry in row v (so u is neighbor of v)
-           u = the_row(j)
-           flag(u) = i
-         end do
-! For each unmatched neighbour of v, count the number of
-! neighbours it has in common with v
-        max_neigh = 0
-        do j = 1, size(the_row)
-           u = the_row(j)
-! cycle is u is already matched
-           if (match(u) /= unmatched) cycle
-           call mc65_matrix_getrow(graph,v,row_u)
-           num = 0
-           do k = 1,size(row_u)
-              w = row_u(k)
-              if (flag(w) == i) num = num + 1
-           end do
-           if (num > max_neigh) then
-              max_neigh = num
-              maxind = u
-           end if
-        end do
-
-! the neighbor with largest number of neighbours in common with v
-        match(v) = maxind
-! mark maxind as having been matched
-        match(maxind) = v
-! increase number of vertices in coarse graph by 1
-        cnvtx = cnvtx + 1
-! construct the prolongation matrix: vertex v and maxind are linked
-! with the coarse grid vertex cnvtx
-! k points to start of row v and now(v) holds number of
-! entries in row v that have been filled (so k + nrow(v) is
-! first free entry in row v)
-        k = p%ptr(v)
-        p%col(k+nrow(v)) = cnvtx
-        p%val(k+nrow(v)) = 1.0_myreal_mc70
-        nrow(v) = nrow(v) + 1
-
-        if (maxind /= v) then
-           k = p%ptr(maxind)
-           p%col(k+nrow(maxind)) = cnvtx
-           p%val(k+nrow(maxind)) = 1.0_myreal_mc70
-           nrow(maxind) = nrow(maxind) + 1
-        end if
-
-      end do
-
-! deallocate the match pointer for vertices
-      deallocate(match,stat=st)
-      if (st /= 0) then
-         ierr = mc70_err_memory_dealloc
-         return
-      end if
-
-   !   deallocate(order,nrow,stat=st)
-   !   if (st /= 0) then
-   !      ierr = mc70_err_memory_dealloc
-   !      return
-   !   end if
-
-! prolongator end
-! size of coarse grid
-      cgrid%size = cnvtx
-
-! allocate coarse grid quantities
-        ALLOCATE (cgrid%where(cnvtx),cgrid%row_wgt(cnvtx),STAT=st)
-      if (st /= 0) ierr = mc70_err_memory_alloc
-
-      end subroutine prolng_common_neigh
-
-!*******************************************************************
-      SUBROUTINE level_print(mp,title1,level,title2,res)
-
-        CHARACTER (len=*), INTENT (IN) :: title1
-        INTEGER, INTENT (IN) :: mp, level
-        REAL (myreal_mc70), OPTIONAL, INTENT (IN) :: res
-        CHARACTER (len=*), OPTIONAL, INTENT (IN) :: title2
-        INTEGER :: char_len1, char_len2
-
-        char_len1 = len_trim(title1)
-
-        IF (present(res) .AND. present(title2)) THEN
-          char_len2 = len_trim(title2)
-          WRITE (mp,'(a,i4,a,g14.3)') title1, level, title2, res
-        ELSE IF (present(res)) THEN
-          WRITE (mp,'(a,i4,g14.3)') title1, level,  res
-        ELSE
-          WRITE (mp,'(a,i4)') title1, level
-        END IF
-
-      END SUBROUTINE level_print
-
-!*************************************************
-      SUBROUTINE galerkin_graph(matrix,p,cmatrix,info)
-
-! Given matrix on fine grid and a prolongation operator p,
-! find the coarse matrix R*A*P
-
-! matrix: fine grid matrix
-        TYPE (zd11_type), INTENT (IN) :: matrix
-! p: prolongation operator
-        TYPE (zd11_type), INTENT (IN) :: p
-! cmatrix: coarse grid matrix
-        TYPE (zd11_type), INTENT (OUT) :: cmatrix
-! r: restriction operator
-        TYPE (zd11_type) :: r
-
-! nvtx,cnvtx: size of fine and coarse grid
-        INTEGER :: nvtx, cnvtx
-        INTEGER :: nz
-
-        INTEGER, INTENT (INOUT) :: info
-        INTEGER :: info65
-
-!!write(*,*) 'start 4637'
-        CALL mc65_matrix_transpose(p,r,info65)
-!!write(*,*) 'end 4637'
-        IF (info65<0) THEN
-          info = info65
-          RETURN
-        END IF
-        nvtx = matrix%n
-        cnvtx = p%n
-
-! get the size of the coarse matrix first
-!!write(*,*) 'start 4648'
-        CALL galerkin_graph_rap_size(nvtx,cnvtx,nz,p%ptr(nvtx+1)-1,p%col, &
-          p%ptr,matrix%ptr(nvtx+1)-1,matrix%col,matrix%ptr,r%ptr(cnvtx+1)-1, &
-          r%col,r%ptr,info)
-!!write(*,*) 'end 4648'
-        IF (info<0) RETURN
-
-!!write(*,*) 'start 4654'
-        CALL mc65_matrix_construct(cmatrix,cnvtx,nz,info65)
-!!write(*,*) 'end 4654'
-        IF (info65<0) THEN
-          info = info65
-          RETURN
-        END IF
-
-!!write(*,*) 'start 4662'
-        CALL galerkin_graph_rap(nvtx,cnvtx,p%ptr(nvtx+1)-1,p%val,p%col,p%ptr, &
-          matrix%ptr(nvtx+1)-1,matrix%val,matrix%col,matrix%ptr, &
-          r%ptr(cnvtx+1)-1,r%val,r%col,r%ptr,nz,cmatrix%val,cmatrix%col, &
-          cmatrix%ptr,info)
-!!write(*,*) 'end 4662'
-        IF (info<0) RETURN
-
-        CALL mc65_matrix_destruct(r,info65)
-        IF (info65<0) THEN
-          info = info65
-          RETURN
-        END IF
-
-      END SUBROUTINE galerkin_graph
-
-!*************************************************
-
-      SUBROUTINE galerkin_graph_rap_size(nvtx,cnvtx,nz,nzp,pcol,pptr,nzaa, &
-          acol,aptr,nzr,rcol,rptr,info)
-! get the number of nonzeros in R*A*P
-! nvtx: size of aa matrix
-! cnvtx: size of ca matrix
-        INTEGER, INTENT (IN) :: nvtx, cnvtx
-! nz: number of nonzeros in R*A*P
-        INTEGER, INTENT (OUT) :: nz
-
-! P: matrix
-        INTEGER, INTENT (IN) :: nzp
-        INTEGER, INTENT (IN), DIMENSION (nzp) :: pcol
-        INTEGER, INTENT (IN), DIMENSION (nvtx+1) :: pptr
-! aa: matrix
-        INTEGER, INTENT (IN) :: nzaa
-        INTEGER, INTENT (IN), DIMENSION (nzaa) :: acol
-        INTEGER, INTENT (IN), DIMENSION (nvtx+1) :: aptr
-! R: matrix
-        INTEGER, INTENT (IN) :: nzr
-        INTEGER, INTENT (IN), DIMENSION (nzr) :: rcol
-        INTEGER, INTENT (IN), DIMENSION (cnvtx+1) :: rptr
-
-! mask: masking array to see if an entry has been seen before
-        INTEGER, DIMENSION (:), ALLOCATABLE :: mask
-! i,j,k: loop index
-        INTEGER :: i, j, k
-! nz: number of nonzeros so far in ca
-        INTEGER :: nz1
-! various neighbors
-        INTEGER :: neigh, neighneigh
-
-! col: column index of a row of r*matrix
-        INTEGER, DIMENSION (:), ALLOCATABLE :: col
-
-        INTEGER, INTENT (INOUT) :: info
-        INTEGER st
-
-        ALLOCATE (mask(nvtx),col(nvtx),STAT=st)
-        IF (st/=0) THEN
-          info = mc70_err_memory_alloc
-          RETURN
-        END IF
-        mask = 0
-        nz = 0
-! loop over coarse grid points
-        DO i = 1, cnvtx
-! first form row i of (r*matrix)
-          nz1 = 0
-! for each vertex D that restricts to C (including itself).
-          DO j = rptr(i), rptr(i+1) - 1
-            neigh = rcol(j)
-! find D's neighbor
-            DO k = aptr(neigh), aptr(neigh+1) - 1
-              neighneigh = acol(k)
-              IF (mask(neighneigh)/=i) THEN
-                nz1 = nz1 + 1
-                col(nz1) = neighneigh
-                mask(neighneigh) = i
-              END IF
-            END DO
-          END DO
-! form row i of (r*matrix)*p
-          DO j = 1, nz1
-            neigh = col(j)
-            DO k = pptr(neigh), pptr(neigh+1) - 1
-              neighneigh = pcol(k)
-              IF (mask(neighneigh)/=-i .AND. neighneigh/=i) THEN
-                nz = nz + 1
-                mask(neighneigh) = -i
-              END IF
-            END DO
-          END DO
-        END DO
-        DEALLOCATE (mask,col,STAT=st)
-        IF (st/=0) info = mc70_err_memory_dealloc
-
-      END SUBROUTINE galerkin_graph_rap_size
-! ******************************************************
-      SUBROUTINE galerkin_graph_rap(nvtx,cnvtx,nzp,pa,pcol,pptr,nzaa,aa,acol, &
-          aptr,nzr,ra,rcol,rptr,nzca,ca,ccol,cptr,info)
-! multiply R*A*P to get CA
-! nvtx: size of aa matrix
-! cnvtx: size of ca matrix
-        INTEGER, INTENT (IN) :: nvtx, cnvtx
-
-! p: matrix
-        INTEGER, INTENT (IN) :: nzp
-        REAL (myreal_mc70), INTENT (IN), DIMENSION (nzp) :: pa
-        INTEGER, INTENT (IN), DIMENSION (nzp) :: pcol
-        INTEGER, INTENT (IN), DIMENSION (nvtx+1) :: pptr
-! aa: matrix
-        INTEGER, INTENT (IN) :: nzaa
-        REAL (myreal_mc70), INTENT (IN), DIMENSION (:) :: aa
-        INTEGER, INTENT (IN), DIMENSION (nzaa) :: acol
-        INTEGER, INTENT (IN), DIMENSION (:) :: aptr
-! r: matrix
-        INTEGER, INTENT (IN) :: nzr
-        REAL (myreal_mc70), INTENT (IN), DIMENSION (nzr) :: ra
-        INTEGER, INTENT (IN), DIMENSION (nzr) :: rcol
-        INTEGER, INTENT (IN), DIMENSION (cnvtx+1) :: rptr
-! ca: matrix
-        INTEGER, INTENT (IN) :: nzca
-        REAL (myreal_mc70), INTENT (INOUT), DIMENSION (nzca) :: ca
-        INTEGER, INTENT (INOUT), DIMENSION (nzca) :: ccol
-        INTEGER, INTENT (INOUT), DIMENSION (cnvtx+1) :: cptr
-
-
-! mask: masking array to see if an entry has been seen before
-        INTEGER, DIMENSION (:), ALLOCATABLE :: mask
-! i,j,k,l: loop index
-        INTEGER :: i, j, k
-! nz: number of nonzeros so far in ca
-        INTEGER :: nz, nzz, nz1
-! various neighbors
-        INTEGER :: neigh, neighneigh
-! r_ij: (i,j) element of r
-        REAL (myreal_mc70) :: r_ij
-! col: column index of a row of r*matrix
-! a: values of a row of r*matrix
-        INTEGER, DIMENSION (:), ALLOCATABLE :: col
-        REAL (myreal_mc70), DIMENSION (:), ALLOCATABLE :: a
-
-        INTEGER, INTENT (INOUT) :: info
-        INTEGER st
-
-        ALLOCATE (col(nvtx),a(nvtx),mask(nvtx),STAT=st)
-        IF (st/=0) THEN
-          info = mc70_err_memory_alloc
-          RETURN
-        END IF
-! now get the entries of the coarse matrix
-        cptr(1) = 1
-        mask = 0
-        nz = 0
-! loop over every coarse grid point
-        DO i = 1, cnvtx
-! first form row i of (r*matrix)
-          nz1 = 0
-! foreach each vertex D that restricts to C (including itself).
-          DO j = rptr(i), rptr(i+1) - 1
-            neigh = rcol(j)
-            r_ij = ra(j)
-! find D's neighbor
-            DO k = aptr(neigh), aptr(neigh+1) - 1
-              neighneigh = acol(k)
-              nzz = mask(neighneigh)
-              IF (nzz==0) THEN
-                nz1 = nz1 + 1
-                col(nz1) = neighneigh
-                a(nz1) = r_ij*aa(k)
-                mask(neighneigh) = nz1
-              ELSE
-                a(nzz) = a(nzz) + r_ij*aa(k)
-              END IF
-            END DO
-          END DO
-          mask(col(1:nz1)) = 0
-
-! form row i of (r*matrix)*p
-          DO j = 1, nz1
-            neigh = col(j)
-            r_ij = a(j)
-            DO k = pptr(neigh), pptr(neigh+1) - 1
-              neighneigh = pcol(k)
-              IF (neighneigh==i) CYCLE
-              nzz = mask(neighneigh)
-              IF (nzz==0) THEN
-                nz = nz + 1
-                mask(neighneigh) = nz
-                ca(nz) = r_ij*pa(k)
-                ccol(nz) = neighneigh
-              ELSE
-                ca(nzz) = ca(nzz) + r_ij*pa(k)
-              END IF
-            END DO
-          END DO
-
-          mask(ccol(cptr(i):nz)) = 0
-          cptr(i+1) = nz + 1
-        END DO
-
-        DEALLOCATE (col,a,mask,STAT=st)
-        IF (st/=0) info = mc70_err_memory_dealloc
-
-      END SUBROUTINE galerkin_graph_rap
-
 ! ---------------------------------------------------
 ! mc70_refine_trim
 ! ---------------------------------------------------
@@ -7928,9 +5944,6 @@ INNER:    DO inn = 1, n
         LOGICAL :: next1, next2, imbal
         REAL(myreal_mc70) :: t1, t2
         REAL(myreal_mc70) :: ratio
-      !  write(*,*) 'a_n1,a_n2',a_n1,a_n2
-      !  write(*,*) 'partition'
-      !  write(*,*) partition
 
         ratio = control%ratio
         IF (ratio.GT.real(sumweight-2)) THEN
@@ -7988,10 +6001,8 @@ INNER:    DO inn = 1, n
                 next2 = .true.
               END IF
             END DO
-         !   write(*,*) j, next1, next2
             IF (next1 .and. .not. next2) THEN
               ! Add to list 1
-            !  write(*,*) 'Add',j,'list1'
               IF (head1.eq.0) THEN
                 head1 = j
                 work(work_next + j) = 0
@@ -8006,7 +6017,6 @@ INNER:    DO inn = 1, n
               work(work_part+j) = sep1
             ELSE IF (next2 .and. .not. next1) THEN
               ! Add to list 2
-             ! write(*,*) 'Add',j,'list2'
               IF (head2.eq.0) THEN
                 head2 = j
                 work(work_next + j) = 0
@@ -8021,7 +6031,6 @@ INNER:    DO inn = 1, n
               work(work_part+j) = sep2
             ELSE IF (next1 .AND. next2) THEN
               work(work_part+j) = sep3
-            !  write(*,*) 'Vertex',j,'next both'
 
             ELSE
               continue
@@ -8049,10 +6058,8 @@ INNER:    DO inn = 1, n
              GOTO 210
            END IF
 
-
              ! move entry from separator to partition1
 200          i = head1
-            ! write(*,*) 'move ',i,'into partition 1'
              work(work_part+i) = mc70_part1_flag
              head1 = work(work_next+i)
              work(work_next+i) = 0
@@ -8071,7 +6078,6 @@ INNER:    DO inn = 1, n
               SELECT CASE (m)
                CASE (mc70_sep_flag)
                   ! Add to list 1
-              !  write(*,*) 'add',j, 'to list 1'
                 work(work_next + tail1) = j
                 work(work_prev + j) = tail1
                 work(work_next + j) = 0
@@ -8083,7 +6089,6 @@ INNER:    DO inn = 1, n
 
                CASE (sep2)
                    ! Remove from list 2
-               ! write(*,*) 'remove',j, 'from list 2'
                 p = work(work_prev + j)
                 q = work(work_next + j)
 
@@ -8113,7 +6118,6 @@ INNER:    DO inn = 1, n
 
              ! move entry from separator to partition 2
 210          i = head2
-           !  write(*,*) 'move ',i,'into partition 2'
              work(work_part+i) = mc70_part2_flag
              head2 = work(work_next+i)
              work(work_next+i) = 0
@@ -8129,11 +6133,9 @@ INNER:    DO inn = 1, n
              DO l = a_ptr(i),k
               j = a_row(l)
               m = work(work_part+j)
-            !  write(*,*) j,m
               SELECT CASE (m)
                CASE (mc70_sep_flag)
                   ! Add to list 2
-              !  write(*,*) 'add',j, 'to list 2'
                 work(work_next + tail2) = j
                 work(work_prev + j) = tail2
                 work(work_next + j) = 0
@@ -8145,7 +6147,6 @@ INNER:    DO inn = 1, n
 
                CASE (sep1)
                    ! Remove from list 1
-              !  write(*,*) 'remove',j, 'from list 1'
                 p = work(work_prev + j)
                 q = work(work_next + j)
                 
@@ -8182,7 +6183,6 @@ INNER:    DO inn = 1, n
         j = partition(i)
         IF (work(work_part+j) .EQ. mc70_sep_flag) THEN
           ! j is not on the boundary
-   !       write(*,*) j, 'not boundary'
           IF (a_weight_1 .LT. a_weight_2) THEN
             ! Move j into partition 1
             work(work_part+j) = mc70_part1_flag
@@ -8322,9 +6322,6 @@ INNER:    DO inn = 1, n
         LOGICAL :: next1, next2, imbal
         REAL(myreal_mc70) :: t1, t2
         REAL(myreal_mc70) :: ratio
-      !  write(*,*) 'a_n1,a_n2',a_n1,a_n2
-      !  write(*,*) 'partition'
-      !  write(*,*) partition
         ratio = control%ratio
         IF (ratio.GT.real(sumweight-2)) THEN
            imbal = .FALSE.
@@ -8383,10 +6380,8 @@ INNER:    DO inn = 1, n
                 next2 = .true.
               END IF
             END DO
-         !   write(*,*) j, next1, next2
             IF (next1 .and. .not. next2) THEN
               ! Add to list 1
-            !  write(*,*) 'Add',j,'list1'
               IF (head1.eq.0) THEN
                 head1 = j
                 work(work_next + j) = 0
@@ -8402,7 +6397,6 @@ INNER:    DO inn = 1, n
               l1 = l1 + 1
             ELSE IF (next2 .and. .not. next1) THEN
               ! Add to list 2
-             ! write(*,*) 'Add',j,'list2'
               IF (head2.eq.0) THEN
                 head2 = j
                 work(work_next + j) = 0
@@ -8418,8 +6412,6 @@ INNER:    DO inn = 1, n
               l2 = l2 + 1
             ELSE IF (next1 .AND. next2) THEN
               work(work_part+j) = sep3
-            !  write(*,*) 'Vertex',j,'next both'
-
             ELSE
               continue
             END IF
@@ -8462,7 +6454,6 @@ INNER:    DO inn = 1, n
             l1new = 0
             DO ll = 1,l1 
              i = head1
-            ! write(*,*) 'move ',i,'into partition 1'
              work(work_part+i) = mc70_part1_flag
              head1 = work(work_next+i)
              work(work_next+i) = 0
@@ -8481,7 +6472,6 @@ INNER:    DO inn = 1, n
               SELECT CASE (m)
                CASE (mc70_sep_flag)
                   ! Add to list 1
-              !  write(*,*) 'add',j, 'to list 1'
                 work(work_next + tail1) = j
                 work(work_prev + j) = tail1
                 work(work_next + j) = 0
@@ -8494,7 +6484,6 @@ INNER:    DO inn = 1, n
 
                CASE (sep2)
                    ! Remove from list 2
-               ! write(*,*) 'remove',j, 'from list 2'
                 p = work(work_prev + j)
                 q = work(work_next + j)
 
@@ -8530,7 +6519,6 @@ INNER:    DO inn = 1, n
            l2new = 0
            DO ll = 1,l2
             i = head2
-           !  write(*,*) 'move ',i,'into partition 2'
              work(work_part+i) = mc70_part2_flag
              head2 = work(work_next+i)
              work(work_next+i) = 0
@@ -8546,11 +6534,9 @@ INNER:    DO inn = 1, n
              DO l = a_ptr(i),k
               j = a_row(l)
               m = work(work_part+j)
-            !  write(*,*) j,m
               SELECT CASE (m)
                CASE (mc70_sep_flag)
                   ! Add to list 2
-              !  write(*,*) 'add',j, 'to list 2'
                 work(work_next + tail2) = j
                 work(work_prev + j) = tail2
                 work(work_next + j) = 0
@@ -8563,7 +6549,6 @@ INNER:    DO inn = 1, n
 
                CASE (sep1)
                    ! Remove from list 1
-              !  write(*,*) 'remove',j, 'from list 1'
                 p = work(work_prev + j)
                 q = work(work_next + j)
                 
@@ -8602,7 +6587,6 @@ INNER:    DO inn = 1, n
         j = partition(i)
         IF (work(work_part+j) .EQ. mc70_sep_flag) THEN
           ! j is not on the boundary
-   !       write(*,*) j, 'not boundary'
           IF (a_weight_1 .LT. a_weight_2) THEN
             ! Move j into partition 1
             work(work_part+j) = mc70_part1_flag
@@ -8741,10 +6725,6 @@ INNER:    DO inn = 1, n
         LOGICAL :: next1, next2, imbal
         REAL(myreal_mc70) :: t1, t2
         REAL(myreal_mc70) :: ratio
-      !  write(*,*) 'a_n1,a_n2',a_n1,a_n2
-      !  write(*,*) 'partition'
-      !  write(*,*) partition
-    ! IF (a_n .EQ. 69) write(*,*) 'start', a_n, a_ne, a_n1, a_n2
         ratio = control%ratio
         IF (ratio.GT.real(sumweight-2)) THEN
            imbal = .FALSE.
@@ -8858,12 +6838,6 @@ INNER:    DO inn = 1, n
             l1 = work(work_next1+l1)
         END DO
         maxlevel1 = work(work_level1+tail1)
-     !   if (a_n .EQ. 69) THEN
-     !     write(*,*) 'maxlevel1',maxlevel1, head1
-     !     write(*,'(10i5)') work(work_level1+1:work_level1+a_n)
-     !     write(*,'(10i5)') work(work_next1+1:work_next1+a_n)
-     !  END IF
-
         
         ! Breadth first search of separator from entries adjacent to partition 2
         l1 = head2
@@ -8886,11 +6860,6 @@ INNER:    DO inn = 1, n
             l1 = work(work_next2+l1)
         END DO
         maxlevel2 = work(work_level2+tail2)
-      !  if (a_n .EQ. 69) THEN
-      !    write(*,*) 'maxlevel2',maxlevel2, head2
-      !    write(*,'(10i5)') work(work_level2+1:work_level2+a_n)
-      !    write(*,'(10i5)') work(work_next2+1:work_next2+a_n)
-      ! END IF
 
         ! Trim the separator
         currlevel1 = 1
@@ -8947,10 +6916,8 @@ INNER:    DO inn = 1, n
           IF (t1 .LT. t2) THEN
             j = l1
             DO WHILE (work(work_level1+j).EQ.currlevel1)
-            !  if (a_n .EQ. 69) write(*,*) 'check ', j, 'for move 1'
               IF (work(work_level2+j).GT.currlevel2) THEN
                  work(work_part+j) = mc70_part1_flag
-             !    if (a_n .EQ. 69) write(*,*) 'move to 1', j, currlevel1, currlevel2
                  a_n1 = a_n1 + 1
               END IF
               j = work(work_next1+j)
@@ -8963,10 +6930,8 @@ INNER:    DO inn = 1, n
           ELSE
             j = l2
             DO WHILE (work(work_level2+j).EQ.currlevel2)
-           !   if (a_n .EQ. 69) write(*,*) 'check ', j, 'for move 2'
               IF (work(work_level1+j).GT.currlevel1) THEN
                  work(work_part+j) = mc70_part2_flag
-            !     if (a_n .EQ. 69) write(*,*) 'move to 2', j, currlevel1, currlevel2
                  a_n2 = a_n2 + 1
               END IF
               j = work(work_next2+j)
@@ -8977,15 +6942,8 @@ INNER:    DO inn = 1, n
             l2 = j
 
           END IF
-       !   if (a_n .EQ. 69) write(*,*) 'l1,l2',l1,l2
 
         END DO
-
-
-    !    if (a_n .EQ. 69) THEN
-    !      write(*,*) 'a_n1,a_n2',a_n1,a_n2
-    !      write(*,'(10i5)') work(work_part+1:work_part+a_n)
-    !   END IF
       
       ! Reset partition matrix
       i = 1
@@ -9007,10 +6965,10 @@ INNER:    DO inn = 1, n
       END DO
       a_weight_sep = sumweight - a_weight_1 - a_weight_2
     !  call check_partition1(a_n,a_ne,a_ptr,a_row,a_n1,a_n2,partition)
-    !  write(*,*) 'end'
 
       END SUBROUTINE mc70_refine_block_trim_new
 
+! ***********************************************************************
 
 ! ---------------------------------------------------
 ! mc70_refine_block_trim
@@ -9058,82 +7016,8 @@ INNER:    DO inn = 1, n
     !  call check_partition1(a_n,a_ne,a_ptr,a_row,a_n1,a_n2,partition)
 
       END SUBROUTINE mc70_refine_max_flow
-   
-      SUBROUTINE check_partition1(a_n,a_ne,a_ptr,a_row,a_n1,a_n2,partition)
-        INTEGER, INTENT(IN) :: a_n ! order of matrix
-        INTEGER, INTENT(IN) :: a_ne ! number of entries in matrix
-        INTEGER, INTENT(IN) :: a_ptr(a_n) ! On input a_ptr(i) contains 
-             ! position in a_row that entries for column i start. 
-        INTEGER, INTENT(IN) :: a_row(a_ne) ! On input a_row contains row 
-             ! indices of the non-zero rows. Diagonal entries have been removed
-             ! and the matrix expanded.
-        INTEGER, INTENT(IN) :: a_n1 
-        INTEGER, INTENT(IN) :: a_n2 
-        INTEGER, INTENT (IN) :: partition(a_n)
 
-        INTEGER :: i, j, flag, c1, c2, k
-        INTEGER, ALLOCATABLE :: flags(:)
-
-        ALLOCATE(flags(a_n))
-        flags(:) = -1
-
-        DO i=1,a_n
-          IF (flags(partition(i)) .NE. -1 ) THEN
-              write(*,*) 'ERROR', partition(i), ' already appeared', a_n
-          ELSE
-             flags(partition(i)) = 0
-           END IF
-        END DO
-
-
-        flags(:) = -1
-        DO i=1,a_n1
-           flags(partition(i)) = mc70_part1_flag
-        END DO
-        DO i=a_n1+1,a_n1+a_n2
-           flags(partition(i)) = mc70_part2_flag
-        END DO
-        DO i=a_n1+a_n2+1,a_n
-           flags(partition(i)) = mc70_sep_flag
-        END DO
-        c1 = 0
-        c2 = 0
-        DO i = 1, a_n
-
-          flag = flags(i)
-          SELECT CASE (flag)
-          CASE (mc70_part1_flag)
-           c1 = c1+1
-          CASE (mc70_part2_flag)
-           c2 = c2+1
-          END SELECT
-          IF ( .NOT. (flag==mc70_sep_flag)) THEN
-            IF (i .EQ. a_n) THEN
-               k = a_ne
-            ELSE 
-               k =  a_ptr(i+1) - 1
-            END IF
-            DO j = a_ptr(i), k
-              IF ( .NOT. ((flags(a_row(j))== &
-                  flag) .OR. (flags(a_row(j))==mc70_sep_flag))) THEN
-                WRITE (*,*) 'ERROR IN PARTITION!', flag, &
-                  flags(a_row(j)),partition(a_row(j)),i
-              END IF
-              IF (i==a_row(j)) THEN
-                WRITE (*,*) 'ERROR, diagonal entry present'
-              END IF
-
-            END DO
-          END IF
-
-
-        END DO
-        IF (c1.NE.a_n1.OR.c2.NE.a_n2) THEN
-             WRITE (*,*) 'ERROR IN PARTITION! components wrong'
-        END IF
-        DEALLOCATE(flags)
-
-      END SUBROUTINE check_partition1
+! ***********************************************************************
 
       SUBROUTINE expand_partition(a_n,a_ne,a_ptr,a_row,a_weight,sumweight,a_n1,&
                a_n2,a_weight_1,a_weight_2,a_weight_sep,partition,work,control)
@@ -9233,11 +7117,10 @@ INNER:    DO inn = 1, n
              l = l+1
           END SELECT
         END DO
-     !   write(*,*) 'ratio sep', real(a_weight_sep)/real(a_weight_sep_orig),&
-     !              (a_weight_sep),(a_weight_sep_orig), a_weight_1, a_weight_2
         
       END SUBROUTINE expand_partition
 
+! ***********************************************************************
 
       SUBROUTINE expand_partition_kinks(a_n,a_ne,a_ptr,a_row,a_weight,&
                sumweight,radius,upper,ratio,a_n1,&
@@ -9495,15 +7378,11 @@ INNER:    DO inn = 1, n
           END IF
         END DO
         
-      !  write(*,*) 'ratio sep kink', real(a_weight_sep)/real(w_sep_orig),&
-      !             (a_weight_sep),(w_sep_orig), a_weight_1, a_weight_2
         
         
       END SUBROUTINE expand_partition_kinks
 
-
-
-
+! ***********************************************************************
 
       SUBROUTINE cost_function(a_weight_1,a_weight_2,a_weight_sep,sumweight,&
           ratio,imbal,tau)
@@ -9536,11 +7415,86 @@ INNER:    DO inn = 1, n
         END IF
 
       END IF
-      !  IF (tau<0.0) THEN
-      !    write(*,*) a_weight_1,a_weight_2,a_weight_sep
-      !  END IF
 
       END SUBROUTINE cost_function
 
+! ***********************************************************************
+
+      SUBROUTINE check_partition1(a_n,a_ne,a_ptr,a_row,a_n1,a_n2,partition)
+        ! NOT IN FINAL CODE - USED FOR DEBUG
+        INTEGER, INTENT(IN) :: a_n ! order of matrix
+        INTEGER, INTENT(IN) :: a_ne ! number of entries in matrix
+        INTEGER, INTENT(IN) :: a_ptr(a_n) ! On input a_ptr(i) contains 
+             ! position in a_row that entries for column i start. 
+        INTEGER, INTENT(IN) :: a_row(a_ne) ! On input a_row contains row 
+             ! indices of the non-zero rows. Diagonal entries have been removed
+             ! and the matrix expanded.
+        INTEGER, INTENT(IN) :: a_n1 
+        INTEGER, INTENT(IN) :: a_n2 
+        INTEGER, INTENT (IN) :: partition(a_n)
+
+        INTEGER :: i, j, flag, c1, c2, k
+        INTEGER, ALLOCATABLE :: flags(:)
+
+        ALLOCATE(flags(a_n))
+        flags(:) = -1
+
+        DO i=1,a_n
+          IF (flags(partition(i)) .NE. -1 ) THEN
+              write(*,*) 'ERROR', partition(i), ' already appeared', a_n
+          ELSE
+             flags(partition(i)) = 0
+           END IF
+        END DO
+
+
+        flags(:) = -1
+        DO i=1,a_n1
+           flags(partition(i)) = mc70_part1_flag
+        END DO
+        DO i=a_n1+1,a_n1+a_n2
+           flags(partition(i)) = mc70_part2_flag
+        END DO
+        DO i=a_n1+a_n2+1,a_n
+           flags(partition(i)) = mc70_sep_flag
+        END DO
+        c1 = 0
+        c2 = 0
+        DO i = 1, a_n
+
+          flag = flags(i)
+          SELECT CASE (flag)
+          CASE (mc70_part1_flag)
+           c1 = c1+1
+          CASE (mc70_part2_flag)
+           c2 = c2+1
+          END SELECT
+          IF ( .NOT. (flag==mc70_sep_flag)) THEN
+            IF (i .EQ. a_n) THEN
+               k = a_ne
+            ELSE 
+               k =  a_ptr(i+1) - 1
+            END IF
+            DO j = a_ptr(i), k
+              IF ( .NOT. ((flags(a_row(j))== &
+                  flag) .OR. (flags(a_row(j))==mc70_sep_flag))) THEN
+                WRITE (*,*) 'ERROR IN PARTITION!', flag, &
+                  flags(a_row(j)),partition(a_row(j)),i
+              END IF
+              IF (i==a_row(j)) THEN
+                WRITE (*,*) 'ERROR, diagonal entry present'
+              END IF
+
+            END DO
+          END IF
+
+
+        END DO
+        IF (c1.NE.a_n1.OR.c2.NE.a_n2) THEN
+             WRITE (*,*) 'ERROR IN PARTITION! components wrong'
+        END IF
+        DEALLOCATE(flags)
+
+      END SUBROUTINE check_partition1
 
 END MODULE hsl_mc70_double
