@@ -1,0 +1,478 @@
+\documentclass{stfc}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+% set the release and package names
+
+\newcommand{\libraryname}{HSL}
+\newcommand{\packagename}{MC70}
+\newcommand{\fullpackagename}{\libraryname\_\packagename}
+\newcommand{\versionum}{1.0.0}
+\newcommand{\version}{\versionum}
+\begin{document}
+
+\hslheader
+
+\hslsummary
+
+Let $A$ be an $n \times n$ matrix with a symmetric sparsity pattern.
+{\tt HSL\_MC70} computes a {\bf nested dissection ordering} of $A$
+that is suitable for use with a sparse direct solver. The 
+algorithm allows for some dense or nearly dense rows and columns in $A$.
+
+The algorithm partitions the rows/columns of $A$ into 3 sets such that 
+reordering the rows/columns to respect to their partitions yields a symmetric 
+matrix of the form
+\begin{equation}\label{eqn:partition}
+\left(\begin{array}{c|c|c} A_1 & 0 & S_1^T \\\hline 0 & A_2 & S_2^T \\\hline S_1 & S_2 & S \end{array}   \right).
+\end{equation}
+The rows of $S$ are given an arbitrary order.
+If the dimension of $A_1$ ($A_2$) is smaller than some predefined value, the rows 
+of $A_1$ ($A_2$) will be ordered using an approximate minimum degree algorithm; 
+otherwise, the rows/columns of $A_1$ ($A_2$) will be partitioned to form 
+another matrix with the above structure and the algorithm will continue to be 
+applied in a recursive manner.
+
+
+
+
+\hslattributes
+\hslversions{\versionum}.
+\hslIRDCZ Real (single, double).
+\hsluses {\tt HSL\_FA14}, {\tt HSL\_MC78} and {\tt HSL\_MC79}.
+\hsllanguage Fortran~2003 subset (F95+TR155581)
+\hsldate January 2014.
+\hslorigin I.S. Duff, J.A. Scott and H.S. Thorne, Rutherford
+Appleton Laboratory.
+
+\hslhowto
+
+\subsection{Calling sequences}
+
+
+Access to the package requires a {\tt USE} statement of the form
+
+
+\hspace{8mm}{\tt USE  \fullpackagename\_integer}
+
+
+
+%\noindent
+%The following procedures are available to the user:
+%\begin{description}
+%\item (a)  To compute a nested dissection ordering,
+%{\tt MC70\_nested} should be called.
+%\vspace{-0.1cm}
+%\item (b) {\tt MC70\_print\_message} can be used after a return from
+%{\tt MC70\_nested} to print the error 
+%message associated with a nonzero error flag.
+%\end{description}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\hsltypes
+\label{derived types}
+For each problem, the user must employ the derived types defined by the
+module to declare scalars of the types
+{\tt MC70\_control} and {\tt MC70\_info}. 
+The following pseudocode illustrates this.
+\begin{verbatim}
+      use HSL_MC70_integer    
+      ...
+      type (MC70_control) :: control       
+      type (MC70_info) :: info
+      ...
+\end{verbatim}
+The components of {\tt MC70\_control} and {\tt MC70\_info} are explained
+in Sections~\ref{typecontrol} and \ref{typeinform}.
+ 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{THE ARGUMENT LISTS\label{ArgLists}}
+
+
+\subsection{Input of the matrix $A$}
+The user must supply the pattern of either the {\bf lower triangular part} of the matrix $A$ 
+or the {\bf lower and upper triangular} part of $A$ 
+in a compressed sparse column format. There is 
+no requirement that zero entries on the diagonal are explicitly included. 
+{\bf No checks} are made on the user's data. It is important to note
+that any out-of-range entries or duplicates may cause {\tt HSL\_\packagename}
+to fail in an unpredictable way. Before using {\tt HSL\_\packagename},
+the HSL package {\tt HSL\_MC69} may  be used to check for errors and to handle
+duplicates ({\tt HSL\_MC69} sums them) and out-of-range entries 
+({\tt HSL\_MC69} removes them).
+
+If the user's data is held using
+another standard sparse matrix format (such as coordinate format
+or sparse compressed row format), we recommend using
+a conversion routine from {\tt HSL\_MC69} to put the data into the required format. 
+The input of $A$ is illustrated in Section~\ref{hslexample}.
+
+
+\subsection{To compute a nested dissection ordering}
+If the user has the {\bf lower triangular part of} $A$ held in 
+compressed sparse columns format, a call 
+of the following form should be made:
+\subroutine{mc70\_order(n,ptr,row,perm,control,info)}
+\vspace{-1.0em}
+If the user has the {\bf lower and upper triangular parts of} $A$ held in 
+compressed sparse columns format, a call of the following form should be made:
+\subroutine{mc70\_order\_full(n,ptr,row,perm,control,info)}
+\vspace{-1.0em}
+\begin{description}
+\itt{n} is an {\tt INTEGER} scalar with {\tt INTENT(IN)}.  On entry it
+must hold the order $n$ of $A$.
+{\bf  Restriction:} {\tt n $\ge$ \tt 1}.
+
+\itt{ptr} is an {\tt INTEGER} array of rank one with {\tt INTENT(IN)}
+and size {\tt n+1}. It must be set by the user so that
+{\tt ptr(j)} is the position in {\tt row} of the first entry in column
+{\tt j} ({\tt j=1,2,...,n}) and {\tt ptr(n+1)} must be set to one more than
+the total number of entries.
+
+\itt{row} is an {\tt INTEGER} array of rank one with {\tt INTENT(IN)}
+and size  {\tt ptr(n+1)-1}. On a call to {\tt mc70\_order}, it must be 
+set by the user so that {\tt row(1:ptr(n+1)-1)} holds the row indices of the entries in 
+the {\bf lower triangular part} of $A$; on a call to 
+{\tt mc70\_order\_full}, it must be 
+set by the user so that {\tt row(1:ptr(n+1)-1)} holds the row indices of the entries in 
+the {\bf lower and upper triangular parts} of $A.$ The entries in a single 
+column must be contiguous. The entries of column {\tt j} must precede those of 
+column {\tt j+1} {\tt (j=1,2,\ldots,n-1)}, and there must be no wasted space 
+between the columns. Row indices within a column may be in any order. Diagonal 
+entries are ignored.
+
+\itt{perm} is an {\tt INTEGER} array with {\tt INTENT(OUT)} and size
+{\tt n}.  On exit, {\tt perm} holds the nested dissection ordering. 
+The position of variable {\tt i} in the nested dissection ordering is  {\tt perm(i)},
+{\tt i=1,2,\ldots,n}.
+
+
+\itt{control}  is a scalar of type {\tt MC70\_control} with {\tt
+INTENT(IN)}.  Its components control the action, as explained in
+Section~\ref{typecontrol}.
+
+\itt{info}  is a scalar of type {\tt MC70\_info} with {\tt
+INTENT(OUT)}.  Its components hold information, as explained in
+Section~\ref{typeinform}.
+
+
+\end{description}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%\subsection{printing error messages\label{MatrixprintMsg}}
+
+%Subroutine {\tt MC70\_print\_message} can be used after return from
+%{\tt MC70\_nested} 
+%to print an error message associated with a nonzero
+%error flag {\tt info\%flag}.
+
+%\subroutine{MC70\_print\_message(flag,[,unit,message])}
+%\vspace{-1.0em}
+
+%\begin{description}
+
+%\itt{flag} is an {\tt INTEGER} scalar of {\tt INTENT(IN)}. On entry,
+%       it must be set by the user
+%	to hold the error flag
+%	generated when calling {\tt MC70\_nested}.
+
+%\itt{unit} is an {\tt OPTIONAL} {\tt INTEGER} scalar of
+%	{\tt INTENT(IN)}.
+%	If present, on entry, it must be set by the user to hold the
+%	unit number for printing the message. If this number
+%	is negative, printing is suppressed. If {\tt unit} is not
+%	present, the message will be printed on unit {\tt 6}.
+
+%\itt{message} is an {\tt OPTIONAL} {\tt CHARACTER (LEN=*)} scalar
+%	with {\tt INTENT(IN)}. If present, on entry, it must be set by
+%	the user to hold the message to be printed
+%	ahead of the error message.
+%\end{description}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\subsection{The control derived data type}
+\label{typecontrol}
+The derived data type {\tt MC70\_control} is used to control the
+action.  The user must declare
+a structure of type {\tt MC70\_control}.
+ The components, which are automatically 
+given default values in the definition of the type, are: \\
+
+\noindent {\bf Printing controls}
+
+\begin{description}
+\itt{print\_level} is a scalar of type  {\tt INTEGER}
+that is used to controls the level of  printing. The different levels are:
+\begin{description}
+\item{\tt $<$ 0 } No printing.
+\item{\tt $=$ 0 } Error messages only.
+\item{\tt $=$ 1 } As 0, plus basic diagnostic printing.
+\item{\tt $>$ 1 } As 1, plus some additional diagnostic printing.
+\end{description}
+The default is {\tt print\_level$=$\tt 0}.
+
+\itt{unit\_diagnostics} is a scalar  of type  
+{\tt INTEGER} that holds the
+unit number for diagnostic printing. Printing is suppressed if 
+{\tt unit\_diagnostics$<0$}.
+The default is {\tt unit\_diagnostics$=$6}.
+
+\itt{unit\_error} is a scalar of type  {\tt INTEGER} that holds the
+unit number for error messages.
+Printing of error messages 
+is suppressed if {\tt unit\_error$<$0}. 
+The default is {\tt unit\_error$=$6}.
+
+\end{description}
+
+\noindent {\bf Other controls}
+
+
+\begin{description}
+
+%\itt{ml} is an {\tt INTEGER} scalar used to determine whether a multilevel 
+%partitioning scheme is used.  The different options are
+%\begin{description}
+%\item{\tt $<$ 1 } Multilevel partitioning scheme is {\bf not} used,
+%\item{\tt $=$ 1 } Multilevel partitioning scheme is  used,
+%\item{\tt $>$ 1 } Automatic choice of whether the multilevel partitioning scheme is used.
+%\end{description}
+%The multilevel partitioning scheme coarsens the matrix (reduces its order 
+%whilst trying to maintain some of the structural properties) recursively. Once 
+%the coarsened matrix is of order at most {\tt ml\_switch} or the maximum 
+%number of multilevel recursions {\tt ml\_max\_levels} has been reached, the coarsened 
+%matrix is partitioned (the partitioning method used is determined by 
+%{\tt ml\_partition\_method}. This partition is projected (and refined) 
+%up through the hierarchy of multilevel matrices. 
+%The recursive multilevel partitioning method will 
+%also stop coarsening if the next coarse matrix would be too small or too large 
+%relative to the current coarse matrix, see {\tt ml\_max\_reduction} and 
+%{\tt ml\_min\_reduction}. If the multilevel partitioning scheme is not 
+%used, the matrix is partitioned using the method defined by 
+%{\tt ml\_partition\_method}. See Section~\ref{sec:ml} for further details 
+%about multilevel partitioning. The default is {\tt ml=2}. 
+
+%\itt{ml\_bandwidth} is a {\tt DOUBLE PRECISION} scalar and is only used if 
+%{\tt ml$>$1}. Let $A$ be the matrix for which we wish to find a nested 
+%dissection ordering, $\widetilde{A}$ be the matrix that results from 
+%(optionally) removing any dense rows and compressing the matrix, and 
+%{\tt ml$>$1}. Suppose that the Reverse Cuthill-McKee algorithm applied to 
+%$\widetilde{A}$  yields a matrix with bandwidth $w.$ If 
+%$w\ge\tilde{n}\times{\tt ml\_bandwidth},$ the multilevel partitioning 
+%method is used within the nested dissection algorithm; otherwise, the 
+%multilevel partitioning method is not used. The default is 
+%{\tt ml\_bandwidth=0.01}.
+
+%\itt{ml\_max\_levels} is an {\tt INTEGER} scalar that holds the maximum number
+%of multilevel recursions, see {\tt ml}.  If 
+%{\tt ml\_max\_levels} $\le$ {\tt 0}, the multilevel partitioning scheme is not used. 
+%The default is {\tt ml\_max\_levels=20}.
+
+%\itt{ml\_max\_reduction} is a {\tt DOUBLE PRECISION} scalar. During the multilevel 
+%partitioning scheme, suppose that the current coarse matrix has order $n_f$ and 
+%the subsequent coarsened matrix would have order $n_c.$ If 
+%$n_c>n_f\times{\tt ml\_max\_reduction},$ the multilevel recursion will 
+%terminate and the current coarse matrix will be 
+%partitioned using the method defined by {\tt partition\_method}. This 
+%partition is projected (and refined) up through the hierarchy of multilevel 
+%matrices. Values less than {0.5} are treated as {\tt 0.5}. Values greater than 
+%{\tt 1.0} are treated as {\tt 1.0}. The default is {\tt ml\_max\_reduction=0.9}.
+
+%\itt{ml\_min\_reduction} is a {\tt DOUBLE PRECISION} scalar. During the multilevel 
+%partitioning scheme, suppose that the current coarse matrix has order $n_1$ and 
+%the subsequent coarsened matrix would have order $n_2.$ If 
+%$n_c<n_f\times{\tt ml\_min\_reduction},$ the multilevel recursion will 
+%terminate and the current coarse matrix will be 
+%partitioned using the method defined by {\tt partition\_method}. This 
+%partition is projected (and refined) up through the hierarchy of multilevel 
+%matrices. Values less than 
+%{\tt 0.01} are treated as {\tt 0.01}. The default is {\tt ml\_min\_reduction=0.01}.
+
+
+%\itt{ml\_switch} is an {\tt INTEGER} scalar that is used in the criteria for 
+%determining when to terminate the recursive multilevel partitioning scheme and 
+%partition the current coarse matrix, see {\tt ml}.   Values less
+%than {\tt 2} are treated as {\tt 2}.
+%The default is {\tt ml\_switch=50}.
+
+
+\itt{max\_levels} is an {\tt INTEGER} scalar that holds the maximum number
+of nested dissection levels. If the maximum number of nested dissection levels 
+is reached, the corresponding matrix in the nested dissection hierarchy 
+will be ordered using an approximate minimum degree algorithm. If 
+{\tt max\_levels = 0}, the ordering of the input matrix is computed 
+using an approximate minimum degree algorithm.  Values less
+than {\tt 0} are treated as {\tt 0}.  The default is {\tt max\_levels=20}.
+
+
+
+\itt{nd\_switch} is an {\tt INTEGER} scalar that is used in the criteria for 
+determining what happens a matrix within the nested dissection hierarchy. If 
+the matrix order is greater than {\tt nd\_switch} and the maximum number of 
+nested dissection levels has not been reached, the matrix will be 
+partitioned; otherwise, it will be ordered using an approximated minimum 
+degree algorithm. Values less than {\tt 2} are treated as {\tt 2}.  The 
+default is {\tt nd\_switch=50}.
+
+
+%\itt{partition\_method} is an {\tt INTEGER} scalar that determines  method 
+%used to partition a matrix (the coarse matrix if using the multilevel
+%partitioning scheme). The different options are:
+%\begin{description}
+%\item{\tt $\le$ 1 } Partition using the half-level set method.
+%\item{\tt $\ge$ 2 } Partition using the level-set method.
+%\end{description}
+%See Section~\ref{sec:ml} for further details. The default is {\tt
+%partition\_method=1}. 
+
+\itt{ratio} is a {\tt DOUBLE PRECISION} scalar. The partitioning and refinement
+methods aim to find partitions (\ref{eqn:partition}) such that
+$\max(n_1,n_2)<\min(n_1,n_2)\times{\tt ratio},$ where $A_1$ has order $n_1$ and
+$A_2$ has order $n_2.$ If several candidate partitions satisfy this requirement,
+then the partition with the smallest value of $\frac{n_s}{n_1 n_2}$ is chosen,
+where $S$ has order $n_s;$ if none of the candidate partitions satisfy this
+requirement, the partition that has the smallest value of
+$\frac{n_s}{n_1 n_2}$ is chosen. Decreasing {\tt ratio} will, in
+general, result in a nested dissection ordering that is more amenable to
+parallel direct solvers; increasing {\tt ratio} will, in general, reduce the
+number of non-zeros in the Cholesky factorization of the reordered matrix. The
+default is {\tt ratio=1.5}.
+
+%\itt{refinement} is an {\tt INTEGER} scalar that determines the method used to
+%refine a partition. Given a matrix partition of the form (\ref{eqn:partition}),
+%the partition is modified with the aim of reducing the order of $S$ and
+%balancing the orders of $A_1$ and $A_2.$ The different options are
+%\begin{description}
+%\item{\tt $<$ 1 } Trimming algorithm followed by Fiduccia-Mattheyses algorithm,
+%\item{\tt $=$ 1 } Dulmage-Mendelsohn algorithm followed by Fiduccia-Mattheyses algorithm,
+%\item{\tt $>$ 1 } Automatic choice of refinement method based on partition properties.
+%\end{description}
+%See Section~\ref{sec:ref} for further details about these methods. The default 
+%is {\tt refinement=2}. 
+
+%\itt{refinement\_band} is an {\tt INTEGER} scalar used within the 
+%Fiduccia-Mattheyses refinement. The variables in the refined separator must be 
+%at most distance {\tt refinement\_band} from a variable that was in the input 
+%separator. See Section~\ref{sec:ref} for further details. In general, small 
+%values of {\tt refinement\_band} result in a faster method but the quality of 
+%the ordering may be compromised. The default is {\tt refinement\_band=4}.
+
+\itt{remove\_dense} is a {\tt LOGICAL} scalar. If {\tt remove\_dense = .true.}, 
+then the input matrix is searched for dense (or nearly dense) rows and columns, 
+and the nested dissection algorithm is applied to the matrix that results when 
+these rows and columns are removed. Dense rows/columns are placed at the end of 
+the ordering. If {\tt remove\_dense = .false.}, then the input matrix is not 
+searched for dense rows. The default is {\tt remove\_dense=.true.}.
+
+
+\end{description}
+
+
+%%%%%%%%%%% inform type %%%%%%%%%%%
+
+\subsection{The derived data type for holding information}
+\label{typeinform}
+The derived data type {\tt MC70\_info} 
+is used to hold parameters that give information about 
+the algorithm. The components of {\tt MC70\_info} 
+(in alphabetical order) are:
+
+\begin{description}
+
+\itt{flag} is a scalar of type  {\tt INTEGER}
+that gives the exit status of the algorithm (details in Section \ref{hslerrors}).
+
+\itt{ndense} is a scalar of type {\tt INTEGER} that holds 
+the number of rows/columns in the input matrix that were determined to be dense. 
+If {\tt control\%remove\_dense = .false.}, the input matrix is not checked for 
+dense rows.
+
+\itt{stat} is a scalar of type  {\tt INTEGER}
+that holds the Fortran {\tt stat} parameter. 
+\end{description}
+
+
+
+\subsection{Error diagnostics\label{hslerrors}}
+
+On successful completion, {\tt MC70\_nested} 
+will exit with  {\tt info\%flag} set to {\tt 0}. Other values
+for {\tt info\%flag} are associated with a fatal error. 
+Possible values are:
+\vspace{-0.1cm}
+\begin{description}
+\item{} {\tt -1} memory allocation failed.
+\item{} {\tt -2} memory deallocation failed.
+\item{} {\tt -3} {\tt n} $\le$ 0.
+
+\end{description}
+
+
+
+\hslgeneral
+
+\hslworkspace Provided automatically by the module.
+
+\hslmodules  {\tt HSL\_FA14}, {\tt HSL\_MC78} and {\tt HSL\_MC79}.
+\hslio Error and diagnostic messages.
+   Error messages on unit {\tt control\%unit\_err}
+   and diagnostic messages on unit {\tt control\%unit\_diagnostics}. These have default value {\tt 6};
+   printing of these messages is suppressed if the relevant unit number
+   is negative or if {\tt control\%print\_level} is negative.
+
+\hslrestrictions
+{\tt n $\ge$ 1}.
+\hslportability Fortran~2003 subset (F95+TR155581)
+
+\hslmethod
+
+
+
+Given a symmetric matrix $A$ of order $n,$ {\tt \fullpackagename} preprocesses the matrix to (optionally) remove dense or almost dense rows/columns, returning $\overline{A}.$ The matrix $\overline{A}$ is then compressed using {\tt HSL\_MC78} to give a symmetric matrix $\widetilde{A}$ with order $\tilde{n}.$ This matrix is passed to the recursive nested dissection algorithm, Algorithm~\ref{alg:nd}, and the resulting permutation matrix is converted into the corresponding elimination ordering. Having formed a nested dissection ordering for $\widetilde{A},$ the ordering is mapped to give an ordering for $\overline{A}.$ The dense rows are appended to the end of the ordering. 
+
+\begin{algorithm}\caption{Nested dissection algorithm}\label{alg:nd}
+\begin{algorithmic}
+\STATE {\bf recursive subroutine nested\_dissection}($A,P$)
+\STATE Input: symmetric matrix $A$ of order $n$
+\STATE Output: permutation matrix $P$
+
+\IF{$n<${\tt nd\_switch}}
+\STATE Form the AMD elimination ordering, $p,$ for $A$ and return its equivalent permutation matrix 
+\ELSE
+\STATE Partition the matrix: compute $P,$ a permutation matrix, such that $P^T A P$ has the form (\ref{eqn:partition})
+\STATE Call {\bf nested\_dissection}($A_1,P_1$)
+\STATE Call {\bf nested\_dissection}($A_2,P_2$)
+\STATE Perform the update $P = PQ,$ where $$Q = \left( \begin{array}{ccc} P_1 & & \\ & P_2 & \\ & & I  \end{array} \right)$$
+\ENDIF
+
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Partitioning a matrix}
+%Assume that $\widetilde{A}$ is irreducible. Given variables
+%$u,v\in\{1,\ldots,\tilde{n} \},$ we define the path between $u$ and $v$ as being
+%a sequence of variables, $l_0,\ldots,l_k\in \{1,\ldots,\tilde{n}\},$ subject to
+%$l_0=u,$ $l_k=v$ and $\widetilde{A}(i,i+1)\neq 0$ for all $i=0,\ldots,k-1:$ this
+%path has length $k.$ The distance between $u$ and $v$ is the length of the
+%shortest path between $u$ and $v.$ Given a variable
+%$u\in\{1,\ldots,\tilde{n}\},$ the level-set $L_i(u)$ is defined as the set of
+%variables that are distance $i$ from $u.$
+
+%At the heart of the partitioning methods, the 
+
+%{\tt \fullpackagename} provides the user with a number of options for choosing the partitioning method. T
+
+
+
+\subsection{Refinement}\label{sec:ref}
+
+\hslexample
+
+
+\end{document}
+
+
