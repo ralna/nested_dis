@@ -36,8 +36,6 @@ PROGRAM main
       REAL (wp) fa14ad, fd15ad
       EXTERNAL fa14ad, fd15ad
 
-  control%ml = 0
-
 !--------------------------------------
 ! Test error flag n<1
 !--------------------------------------
@@ -873,12 +871,7 @@ test = 10
                  28,29,29,30,30,31,31,31 /)
 
   control%nd_switch = 5
-  control%partition_method = 1
-  control%refinement = 2
   control%ratio = 0.95
-  control%refinement_band = n
-  control%ml = 1
-  control%ml_switch = 15
   DO i = -1,2
     control%print_level = i
     CALL mc70_order(n,ptr,row,perm ,control,info,seps)     
@@ -887,12 +880,7 @@ test = 10
   END DO
   control%print_level = 0
   control%nd_switch = 50
-  control%partition_method = 1
-  control%refinement = 1
   control%ratio = 0.0
-  control%refinement_band = -3
-  control%ml = 0
-  control%ml_switch = 100
 
   DEALLOCATE(ptr,row,perm,seps,stat=st)
   IF (st .ne. 0) GOTO 20
@@ -917,12 +905,7 @@ test = 10
                  28,29,29,30,30,31,31,31 /)
 
   control%nd_switch = 5
-  control%partition_method = 2
-  control%refinement = 2
   control%ratio = 0.95
-  control%refinement_band = n
-  control%ml = 1
-  control%ml_switch = 15
   DO i = -1,2
     control%print_level = i
     CALL mc70_order(n,ptr,row,perm ,control,info,seps)     
@@ -931,12 +914,7 @@ test = 10
   END DO
   control%print_level = 0
   control%nd_switch = 50
-  control%partition_method = 1
-  control%refinement = 1
   control%ratio = 0.0
-  control%refinement_band = -3
-  control%ml = 0
-  control%ml_switch = 100
 
   DEALLOCATE(ptr,row,perm,seps,stat=st)
   IF (st .ne. 0) GOTO 20

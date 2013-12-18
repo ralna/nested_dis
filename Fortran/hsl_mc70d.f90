@@ -1591,9 +1591,8 @@ MODULE hsl_mc70_double
         INTEGER :: a_ptr_sub_ptr ! pointer into work array
         INTEGER :: a_row_sub_ptr ! pointer into work array
         INTEGER :: partition_method
-        INTEGER :: i,j,k,p,q,l
-        INTEGER :: a_weight_1,a_weight_2,a_weight_sep,aw1,aw2,aws,an1,an2,ans
-        INTEGER ::aw1o,aw2o,awso,an1o,an2o,anso,aw1t,aw2t,awst,an1t,an2t,anst
+        INTEGER :: i,j
+        INTEGER :: a_weight_1,a_weight_2,a_weight_sep
         INTEGER :: ref_method
         INTEGER :: a_n1_new,a_n2_new,a_weight_1_new,a_weight_2_new,a_weight_sep_new
         INTEGER :: nstrt,nend
@@ -1961,7 +1960,7 @@ MODULE hsl_mc70_double
 
 ! ---------------------------------------------
 ! Local variables
-        INTEGER :: i,j,dptr,p1sz,p2sz,sepsz,lwork,k
+        INTEGER :: i,j,dptr,p1sz,p2sz,sepsz,k
         INTEGER :: unit_diagnostics ! unit on which to print diagnostics
         INTEGER :: mask_p,level_p,level_ptr_p,level2_p,level2_ptr_p,work_p
         INTEGER :: num_levels_nend ! no. levels in structure rooted at nend
@@ -2112,9 +2111,6 @@ MODULE hsl_mc70_double
         IF (level .EQ. 0) THEN
              band = max(band,100.0*real(lwidth,kind(1.0D0))/real(sumweight,kind(1.0D0)))
         END IF
-
-222     CONTINUE
-
 
         ! Find level structure rooted at nstrt
         work(mask_p+1:mask_p+a_n) = 1
@@ -2284,7 +2280,6 @@ MODULE hsl_mc70_double
         INTEGER :: num_entries ! no. entries in level structure rooted at nend
         INTEGER :: best_sep_start
         INTEGER :: i,j,p1sz,p2sz,sepsz,lwidth
-        INTEGER :: lwork
         INTEGER :: mindeg, degree, max_search
         REAL(myreal_mc70) :: bestval
         REAL(myreal_mc70) :: val
@@ -2358,9 +2353,6 @@ MODULE hsl_mc70_double
         IF (level .EQ. 0) THEN
              band = max(band,100.0*real(lwidth,kind(1.0D0))/real(a_n,kind(1.0D0)))
         END IF
-
-
-222     CONTINUE
 
          IF (num_levels_nend .LE. 2) THEN
            ! Not possible to find separator
@@ -2482,7 +2474,7 @@ MODULE hsl_mc70_double
 ! ---------------------------------------------
 ! Local variables
         INTEGER :: i, j, k
-        INTEGER :: mindeg, degree,maxdep,main
+        INTEGER :: mindeg,maxdep,main
         INTEGER :: mask,list
         INTEGER :: nstop ! ending pseudoperipheral node
         INTEGER :: node ! Index of graph node
@@ -6721,7 +6713,7 @@ INNER:    DO inn = 1, n
         INTEGER :: a_n1_orig, a_n2_orig
         INTEGER :: head1, head2, tail1, tail2, maxlevel1, maxlevel2
         INTEGER :: currlevel1, currlevel2
-        INTEGER :: i,j,k,l,m,p,q,w1,w2,l1,l2,l1new,l2new,ll
+        INTEGER :: i,j,k,l,m,w1,w2,l1,l2
         LOGICAL :: next1, next2, imbal
         REAL(myreal_mc70) :: t1, t2
         REAL(myreal_mc70) :: ratio
